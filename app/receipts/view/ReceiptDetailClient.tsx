@@ -790,9 +790,9 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
               </div>
 
               {/* User and LBA Signature Section */}
-              <div className='flex justify-between mt-6 print:mt-4 pt-4 print:pt-3 border-t-2 border-blue-600'>
+              <div className='flex justify-center items-center mt-6 print:mt-4 pt-4 print:pt-3 border-t-2 border-blue-600'>
                 {/* User Signature */}
-                <div>
+                <div className='mt-6'>
                   <div className="flex">
                     <div className="text-right w-64 print:w-56">
                       <div className="mb-1 border-b-2 border-gray-900 pb-2 print:pb-1 min-h-[50px] print:min-h-[40px] flex items-center justify-center">
@@ -805,23 +805,22 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                           />
                         )}
                       </div>
-                      <p className="text-left text-xs print:text-[10px] font-bold text-gray-900 uppercase tracking-wide mt-1">{t('receipts.userSignature')}</p>
-                      <p className="text-left text-xs print:text-[10px] text-gray-600 mt-0.5">{t('receipts.authorizedSignatory')}</p>
+                      <p className="text-center text-xs print:text-[10px] font-bold text-gray-900 uppercase tracking-wide mt-1">{t('receipts.userSignature')}</p>
+                      <p className="text-center text-xs print:text-[10px] text-gray-600 mt-0.5">{t('receipts.authorizedSignatory')}</p>
                     </div>
                   </div>
                 </div>
                 {/* LBA Signature */}
-                <div>
+                {/* <div>
                   <div className="flex justify-end">
                     <div className="text-right w-64 print:w-56">
                       <div className="mb-1 border-b-2 border-gray-900 pb-2 print:pb-1 min-h-[50px] print:min-h-[40px] flex items-end justify-center">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                       </div>
                       <p className="text-xs print:text-[10px] font-bold text-gray-900 uppercase tracking-wide mt-1">LBA Signature</p>
                       <p className="text-xs print:text-[10px] text-gray-600 mt-0.5">Authorized Signature</p>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </div>
             </div>
           </div>
