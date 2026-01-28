@@ -62,7 +62,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
         <div className="flex flex-1 overflow-hidden">
           <Sidebar />
           <main className="flex-1 bg-gray-50 ml-64 pt-16 flex flex-col overflow-hidden">
-            <ScrollView>
+            <ScrollView key={pathname}>
               {children}
             </ScrollView>
           </main>

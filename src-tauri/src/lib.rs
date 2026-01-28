@@ -3,9 +3,14 @@ async fn get_printers() -> Result<Vec<String>, String> {
   #[cfg(target_os = "windows")]
   {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
+
+    // CREATE_NO_WINDOW flag to prevent showing a console window
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     
-    // Use PowerShell to get list of printers
+    // Use PowerShell to get list of printers without showing a window
     let output = Command::new("powershell")
+      .creation_flags(CREATE_NO_WINDOW)
       .args(&[
         "-Command",
         "Get-Printer | Select-Object -ExpandProperty Name | ConvertTo-Json -Compress"
@@ -83,12 +88,17 @@ async fn print_file(path: String, printer_name: Option<String>) -> Result<(), St
   #[cfg(target_os = "windows")]
   {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
+
+    // CREATE_NO_WINDOW flag to prevent showing a console window
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     
     let printer = printer_name.unwrap_or_else(|| "default".to_string());
     
-    // Use PowerShell to print the PDF
+    // Use PowerShell to print the PDF without showing a window
     let output = if printer == "default" {
       Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW)
         .args(&[
           "-Command",
           &format!("Start-Process -FilePath '{}' -Verb Print -PassThru | Wait-Process", path)
@@ -96,6 +106,7 @@ async fn print_file(path: String, printer_name: Option<String>) -> Result<(), St
         .output()
     } else {
       Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW)
         .args(&[
           "-Command",
           &format!("Start-Process -FilePath '{}' -Verb PrintTo -ArgumentList '{}' -PassThru | Wait-Process", path, printer)

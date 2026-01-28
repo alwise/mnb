@@ -53,3 +53,7 @@ jobs:
           releaseDraft: false # must be false so /releases/latest serves this release and latest.json
           prerelease: false
           includeUpdaterJson: true
+          # On macOS, build a universal binary so Apple Silicon (darwin-aarch64)
+          # and Intel (darwin-x86_64) are both covered in latest.json.
+          # On Windows, this is ignored by tauri-action.
+          tauri-args: ${{ matrix.platform == 'macos-latest' && '--target universal-apple-darwin' || '' }}
