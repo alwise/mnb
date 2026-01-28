@@ -86,9 +86,10 @@ async fn print_file(path: String, printer_name: Option<String>) -> Result<(), St
       use std::os::windows::process::CommandExt;
       use windows::{
         core::{w, PCWSTR},
-        Win32::Foundation::*,
-        Win32::System::Com::*,
-        Win32::UI::Shell::*,
+        Win32::Foundation::HWND,
+        Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE},
+        Win32::UI::Shell::ShellExecuteW,
+        Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
       };
 
       const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -102,7 +103,7 @@ async fn print_file(path: String, printer_name: Option<String>) -> Result<(), St
       if printer_name.is_none() {
         unsafe {
           let result = ShellExecuteW(
-            None,
+            HWND::default(),
             w!("print"),
             PCWSTR(path_wide.as_ptr()),
             None,
@@ -110,7 +111,7 @@ async fn print_file(path: String, printer_name: Option<String>) -> Result<(), St
             SW_SHOWNORMAL,
           );
 
-          if result.0 > 32 {
+          if result.0 as isize > 32 {
             return Ok(());
           }
         }
