@@ -723,7 +723,7 @@ export default function CreateStockCardPage() {
                           });
                         } else if (!selectedLBAUnit) {
                           // If user is typing but hasn't selected, update unit field
-                          setUnitFields(prev => ({ ...prev, unit: value, lba_name: value }));
+                          setUnitFields(prev => ({ ...prev, lba_name: value }));
                         }
                       }}
                       onSelect={handleLBAUnitSelect}

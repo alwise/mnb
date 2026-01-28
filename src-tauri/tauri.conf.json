@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "MAN NO BE GOD COMPANY LIMITED",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "com.mnb.receiptmanager",
   "build": {
     "frontendDist": "../out",
@@ -16,7 +16,7 @@
         "width": 1200,
         "height": 800,
         "resizable": true,
-        "fullscreen": false,
+        "fullscreen": true,
         "minWidth": 800,
         "minHeight": 600
       }
