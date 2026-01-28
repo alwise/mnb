@@ -675,9 +675,6 @@ export default function ReceiptsListPage() {
                                   Balance
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                  Weight
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                   Bags
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -691,7 +688,7 @@ export default function ReceiptsListPage() {
                             <tbody className="bg-white divide-y divide-gray-200">
                               {displayReceipts.length === 0 ? (
                                 <tr>
-                                  <td colSpan={17} className="px-6 py-4 text-center text-sm text-gray-500">
+                                  <td colSpan={16} className="px-6 py-4 text-center text-sm text-gray-500">
                                     No receipts found
                                   </td>
                                 </tr>
@@ -742,16 +739,13 @@ export default function ReceiptsListPage() {
                                       {formatCurrency(receipt.balance_ghc)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                      {receipt.weight}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                       {receipt.bags}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                       {receipt.mts}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                      {receipt.signature}
+                                      {receipt.item_signatures || receipt.signature}
                                     </td>
                                   </tr>
                                 ))
@@ -829,9 +823,6 @@ export default function ReceiptsListPage() {
                           Balance
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Weight
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Bags
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -889,16 +880,13 @@ export default function ReceiptsListPage() {
                             {formatCurrency(receipt.balance_ghc)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {receipt.weight}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {receipt.bags}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {receipt.mts}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {receipt.signature}
+                            {receipt.item_signatures || receipt.signature}
                           </td>
                         </tr>
                       ))}
@@ -1006,7 +994,6 @@ export default function ReceiptsListPage() {
                         <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Credit</th>
                         <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Debit</th>
                         <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Balance</th>
-                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Weight</th>
                         <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Bags</th>
                         <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">MTS</th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Signature</th>
@@ -1037,10 +1024,9 @@ export default function ReceiptsListPage() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{formatCurrency(receipt.credit_amount)}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{formatCurrency(receipt.debit_amount)}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-gray-900">{formatCurrency(receipt.balance_ghc)}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{receipt.weight}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{receipt.bags}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{receipt.mts}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.signature}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.item_signatures || receipt.signature}</td>
                         </tr>
                       ))}
                     </tbody>

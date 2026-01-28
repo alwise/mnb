@@ -61,6 +61,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
     bags: string;
     balance_ghc: string;
     balance_lba: string;
+    signature: string;
   }>>([{
     serial_number: '1',
     date: new Date().toISOString().split('T')[0],
@@ -72,6 +73,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
     bags: '0',
     balance_ghc: '0',
     balance_lba: '0',
+    signature: '',
   }]);
 
   const [photo, setPhoto] = useState<File | null>(null);
@@ -124,9 +126,9 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       : description.replace(/^\d+\.\s*/, '').replace(/\s*\(.*\)$/, '').trim() || description;
 
     // Get signature from item - ensure it's a string
-    // const itemSignature = item?.signature !== "" && item.signature !== undefined && item.signature !== null ? String(item.signature) : "";
+    const itemSignature = item?.signature !== "" && item.signature !== undefined && item.signature !== null ? String(item.signature) : "";
 
-    // console.log(`parseReceiptItem[${index}]: item.signature =`, item.signature, '-> parsed signature =', itemSignature);
+    console.log(`parseReceiptItem[${index}]: item.signature =`, item.signature, '-> parsed signature =', itemSignature);
 
     return {
       serial_number,
@@ -139,6 +141,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       bags: (item.bags || 0).toString(),
       balance_ghc: '0',
       balance_lba: '0',
+      signature: itemSignature,
     };
   }
 
@@ -252,6 +255,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
           bags: receipt.bags.toString(),
           balance_ghc: receipt.balance_ghc.toString(),
           balance_lba: '0',
+          signature: receipt.signature || '',
         }]);
       }
 
@@ -340,6 +344,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       bags: '0',
       balance_ghc: '0',
       balance_lba: '0',
+      signature: '',
     }]);
   }
 
@@ -521,7 +526,8 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         balance_ghc: parseFloat(formData.balance_ghc) || 0,
         previous_balance: parseFloat(formData.previous_balance) || 0,
         mts: parseFloat(formData.mts) || 0,
-        bags: parseInt(formData.bags) || 0
+        bags: parseInt(formData.bags) || 0,
+        signature: formData.signature || ''
       };
 
       const validItems = items.filter(item => item.description.trim() !== '');
@@ -539,6 +545,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
           mts: parseFloat(item.mts) || 0,
           bags: parseInt(item.bags) || 0,
           item_order: index,
+          signature: item.signature || '',
         }));
 
       console.log('Updating receipt with data:', { receiptId, receiptData, receiptItems });
@@ -965,17 +972,15 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                             {item.balance_ghc}
                           </td>
                           <td className="border  border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
-                            {/* <Input
+                            <Input
                               type="text"
-                              // maxLength={20}
                               inputMode='text'
                               value={item.signature || ''}
                               onChange={(e) => {
-                                const val = e.target.value.replace(/[^A-Za-z0-9]/g, '');
-                                updateItem(index, 'signature', val);
+                                updateItem(index, 'signature', e.target.value);
                               }}
                               className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
-                            /> */}
+                            />
                           </td>
                           <td className="border border-blue-600 px-0.5 py-1">
                             <div className="flex gap-0.5 justify-center">

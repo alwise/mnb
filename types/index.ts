@@ -38,6 +38,7 @@ export interface ReceiptItem {
   mts: number;
   bags: number;
   item_order: number;
+  signature?: string;
   created_at?: string;
 }
 
@@ -58,6 +59,7 @@ export interface ReceiptWithUnit extends Receipt {
   season?: string;
   unit_head?: string;
   qci_name?: string;
+  item_signatures?: string;
   items?: ReceiptItem[];
 }
 

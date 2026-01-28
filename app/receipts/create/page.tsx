@@ -405,6 +405,7 @@ export default function CreateStockCardPage() {
           mts: parseFloat(item.mts) || 0,
           bags: parseInt(item.bags) || 0,
           item_order: index,
+          signature: item.signature || '',
         }));
 
       // console.log('Creating receipt with data:', receiptData);
@@ -807,15 +808,13 @@ export default function CreateStockCardPage() {
                             {item.balance_ghc}
                           </td>
                           <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
-                            {/* show signature initials in the center of the cell */}
-                            {/* <Input
+                            <Input
                               type="text"
-                              // maxLength={3}
                               inputMode='text'
                               value={item.signature || ''}
                               onChange={(e) => updateItem(index, 'signature', e.target.value)}
                               className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
-                            /> */}
+                            />
                           </td>
                           <td className="border border-blue-600 px-0.5 py-1">
                             <div className="flex gap-0.5 justify-center">

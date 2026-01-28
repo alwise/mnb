@@ -155,6 +155,16 @@ async function migrateDatabase(db: Database): Promise<void> {
     console.warn("Migration warning for lba_units renaming:", error);
   }
 
+  // Add signature column to receipt_items if it doesn't exist
+  try {
+    await db.execute(`
+      ALTER TABLE receipt_items ADD COLUMN signature TEXT
+    `);
+    console.log("Added signature column to receipt_items table");
+  } catch (error) {
+    // Column might already exist
+  }
+
   // Create receipt_history table if it doesn't exist
   try {
     await db.execute(`
@@ -267,6 +277,7 @@ async function initializeDatabase(db: Database): Promise<void> {
       mts REAL NOT NULL DEFAULT 0,
       bags INTEGER NOT NULL DEFAULT 0,
       item_order INTEGER NOT NULL DEFAULT 0,
+      signature TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE
     )

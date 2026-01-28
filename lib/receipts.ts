@@ -309,8 +309,8 @@ export async function createReceipt(
         console.log(`Inserting item ${i + 1}/${items.length}...`);
         await db.execute(
           `INSERT INTO receipt_items (
-            receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order, signature
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             receiptId,
             item.description,
@@ -320,6 +320,7 @@ export async function createReceipt(
             item.mts,
             item.bags,
             item.item_order || i,
+            item.signature || null,
           ],
         );
       }
@@ -370,6 +371,7 @@ export async function getAllReceipts(): Promise<ReceiptWithUnit[]> {
   return await db.select<ReceiptWithUnit[]>(`
     SELECT 
       r.*,
+      (SELECT GROUP_CONCAT(signature, ', ') FROM (SELECT signature FROM receipt_items WHERE receipt_id = r.id AND signature IS NOT NULL AND signature != '' GROUP BY signature)) as item_signatures,
       u.unit,
       u.lba_name,
       u.lba_code,
@@ -454,6 +456,7 @@ export async function getReceiptsPaginated(
     `
     SELECT 
       r.*,
+      (SELECT GROUP_CONCAT(signature, ', ') FROM (SELECT signature FROM receipt_items WHERE receipt_id = r.id AND signature IS NOT NULL AND signature != '' GROUP BY signature)) as item_signatures,
       u.unit,
       u.lba_name,
       u.lba_code,
@@ -485,6 +488,7 @@ export async function getReceiptById(
     `
     SELECT 
       r.*,
+      (SELECT GROUP_CONCAT(signature, ', ') FROM (SELECT signature FROM receipt_items WHERE receipt_id = r.id AND signature IS NOT NULL AND signature != '' GROUP BY signature)) as item_signatures,
       u.unit,
       u.lba_name,
       u.lba_code,
@@ -526,6 +530,7 @@ export async function getReceiptsByUnitId(
     `
     SELECT 
       r.*,
+      (SELECT GROUP_CONCAT(signature, ', ') FROM (SELECT signature FROM receipt_items WHERE receipt_id = r.id AND signature IS NOT NULL AND signature != '' GROUP BY signature)) as item_signatures,
       u.unit,
       u.lba_name,
       u.lba_code,
@@ -701,8 +706,9 @@ export async function updateReceipt(
           balance_ghc = $8,
           previous_balance = $9,
           mts = $10,
-          bags = $11
-        WHERE id = $12`,
+          bags = $11,
+          signature = $12
+        WHERE id = $13`,
         [
           receipt.lba_name,
           receipt.date,
@@ -715,6 +721,7 @@ export async function updateReceipt(
           previousBalance,
           receipt.mts,
           receipt.bags,
+          receipt.signature,
           id,
         ],
       );
@@ -777,7 +784,7 @@ export async function updateReceipt(
             batch.forEach((item, i) => {
               const baseIndex = batchStart + i;
               valuePlaceholders.push(
-                `($${paramCounter}, $${paramCounter + 1}, $${paramCounter + 2}, $${paramCounter + 3}, $${paramCounter + 4}, $${paramCounter + 5}, $${paramCounter + 6}, $${paramCounter + 7})`,
+                `($${paramCounter}, $${paramCounter + 1}, $${paramCounter + 2}, $${paramCounter + 3}, $${paramCounter + 4}, $${paramCounter + 5}, $${paramCounter + 6}, $${paramCounter + 7}, $${paramCounter + 8})`,
               );
               params.push(
                 id,
@@ -788,14 +795,15 @@ export async function updateReceipt(
                 item.mts,
                 item.bags,
                 item.item_order ?? baseIndex,
+                item.signature || null,
               );
-              paramCounter += 8;
+              paramCounter += 9;
             });
 
             try {
               await db.execute(
                 `INSERT INTO receipt_items (
-                  receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order
+                  receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order, signature
                 ) VALUES ${valuePlaceholders.join(", ")}`,
                 params,
               );
@@ -821,7 +829,7 @@ export async function updateReceipt(
                 await db.execute(
                   `INSERT INTO receipt_items (
                     receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order, signature
-                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                   [
                     id,
                     item.description,
@@ -831,6 +839,7 @@ export async function updateReceipt(
                     item.mts,
                     item.bags,
                     item.item_order ?? baseIndex,
+                    item.signature || null,
                   ],
                 );
               }
@@ -884,6 +893,7 @@ export async function getReceiptsGroupedByLBA(): Promise<
   const receipts = await db.select<ReceiptWithUnit[]>(`
     SELECT 
       r.*,
+      (SELECT GROUP_CONCAT(signature, ', ') FROM (SELECT signature FROM receipt_items WHERE receipt_id = r.id AND signature IS NOT NULL AND signature != '' GROUP BY signature)) as item_signatures,
       u.lba_name,
       u.lba_code,
       u.crop,

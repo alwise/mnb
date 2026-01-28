@@ -152,6 +152,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
           date: receiptData.date,
           whr_number: receiptData.whr_number,
           description_only: receiptData.description,
+          signature: receiptData.signature || '',
         }]);
       }
 
@@ -865,9 +866,9 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                             {item.balance_ghc.toFixed(2)}
                           </td>
                           <td className="border border-blue-600 px-2 py-1 text-center">
-                            {/* LBA signature - blank space for printing/manual signature */}
-                            {receipt.signature && receipt.signature !== 'User Signature' ? (
-                              <span className="text-xs">{receipt.signature}</span>
+                            {/* item signature */}
+                            {item.signature ? (
+                              <span className="text-xs">{item.signature}</span>
                             ) : (
                               <span className="text-xs text-gray-400">&nbsp;</span>
                             )}
