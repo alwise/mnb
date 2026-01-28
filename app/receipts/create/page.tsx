@@ -26,9 +26,9 @@ export default function CreateStockCardPage() {
   const { user } = useAuth();
   const { t } = useTexts();
   const queryClient = useQueryClient();
-  const [loading, setLoading] = useState(false);
+  // const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [showUnitForm, setShowUnitForm] = useState(false);
+  // const [showUnitForm, setShowUnitForm] = useState(false);
   const [lbaUnitDisplay, setLbaUnitDisplay] = useState('');
   const [selectedLBAUnit, setSelectedLBAUnit] = useState<LBAUnit | null>(null);
 
@@ -265,36 +265,36 @@ export default function CreateStockCardPage() {
     }));
   }
 
-  async function handleCreateUnit(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      setSubmitting(true);
-      const unitId = await createLBAUnit(unitFormData);
-      const newUnit: LBAUnit = {
-        ...unitFormData,
-        id: unitId,
-      };
-      setSelectedLBAUnit(newUnit);
-      setLbaUnitDisplay(getLBAUnitDisplay(newUnit));
-      setFormData((prev) => ({ ...prev, lba_unit_id: unitId.toString() }));
-      setShowUnitForm(false);
-      setUnitFormData({
-        unit: '',
-        lba_name: '',
-        crop: '',
-        season: '',
-        unit_head: '',
-        qci_name: '',
-        lba_code: '',
-      });
-      await showAlert(t('lbaUnit.createSuccess'));
-    } catch (error) {
-      console.error('Error creating LBA unit:', error);
-      await showAlert(t('lbaUnit.createError'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  // async function handleCreateUnit(e: React.FormEvent) {
+  //   e.preventDefault();
+  //   try {
+  //     setSubmitting(true);
+  //     const unitId = await createLBAUnit(unitFormData);
+  //     const newUnit: LBAUnit = {
+  //       ...unitFormData,
+  //       id: unitId,
+  //     };
+  //     setSelectedLBAUnit(newUnit);
+  //     setLbaUnitDisplay(getLBAUnitDisplay(newUnit));
+  //     setFormData((prev) => ({ ...prev, lba_unit_id: unitId.toString() }));
+  //     // setShowUnitForm(false);
+  //     setUnitFormData({
+  //       unit: '',
+  //       lba_name: '',
+  //       crop: '',
+  //       season: '',
+  //       unit_head: '',
+  //       qci_name: '',
+  //       lba_code: '',
+  //     });
+  //     await showAlert(t('lbaUnit.createSuccess'));
+  //   } catch (error) {
+  //     console.error('Error creating LBA unit:', error);
+  //     await showAlert(t('lbaUnit.createError'));
+  //   } finally {
+  //     setSubmitting(false);
+  //   }
+  // }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
