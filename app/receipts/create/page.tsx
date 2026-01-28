@@ -28,7 +28,6 @@ export default function CreateStockCardPage() {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [fillingSampleData, setFillingSampleData] = useState(false);
   const [showUnitForm, setShowUnitForm] = useState(false);
   const [lbaUnitDisplay, setLbaUnitDisplay] = useState('');
   const [selectedLBAUnit, setSelectedLBAUnit] = useState<LBAUnit | null>(null);
@@ -297,138 +296,6 @@ export default function CreateStockCardPage() {
     }
   }
 
-  async function handleFillSampleData() {
-    try {
-      setFillingSampleData(true);
-
-      // First, ensure we have an LBA unit to use
-      let lbaUnitId: number;
-
-      if (selectedLBAUnit?.id) {
-        lbaUnitId = selectedLBAUnit.id;
-      } else if (formData.lba_unit_id) {
-        lbaUnitId = parseInt(formData.lba_unit_id);
-      } else {
-        // Create a test LBA unit
-        const testUnit = {
-          unit: 'Test LBA Name',
-          lba_name: 'Test LBA Name',
-          crop: 'Cashew',
-          season: '2024',
-          unit_head: 'John Doe',
-          qci_name: 'Quality Control Inspector',
-          lba_code: 'TEST001',
-        };
-        lbaUnitId = await createLBAUnit(testUnit);
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      // Get user signature
-      let signature = 'User Signature';
-      if (user) {
-        try {
-          const userSignature = await getUserSignatureDataUrl(user.id);
-          if (userSignature) {
-            signature = 'User Signature';
-          }
-        } catch (error) {
-          console.log('No user signature found, using default');
-        }
-      }
-
-      // Generate 1000 receipts with varied data
-      const totalReceipts = 1000;
-      let previousBalance = 0;
-      const startDate = new Date('2024-01-01');
-
-      for (let i = 0; i < totalReceipts; i++) {
-        // Generate sequential dates (spread over a year) to ensure correct balance calculations
-        const daysOffset = Math.floor(i / (totalReceipts / 365));
-        const date = new Date(startDate);
-        date.setDate(date.getDate() + daysOffset);
-        // Add some hours to ensure unique timestamps even on same day
-        date.setHours(date.getHours() + (i % 24));
-        const dateStr = date.toISOString().split('T')[0];
-
-        // Generate varied amounts
-        const creditAmount = Math.random() * 5000 + 100; // 100 to 5100
-        const debitAmount = Math.random() * 3000; // 0 to 3000
-        const mts = Math.random() * 10 + 1; // 1 to 11
-        const bags = Math.floor(Math.random() * 50 + 5); // 5 to 55
-
-        // Calculate balance
-        previousBalance = previousBalance + creditAmount - debitAmount;
-
-        // Generate varied descriptions and WHR numbers
-        const descriptions = [
-          'Stock card entry',
-          'Cashew purchase',
-          'Inventory adjustment',
-          'Stock transfer',
-          'Quality check',
-          'Stock receipt',
-          'Warehouse entry',
-          'Stock movement',
-          'Inventory update',
-          'Stock adjustment',
-        ];
-        const description = descriptions[Math.floor(Math.random() * descriptions.length)] + ` #${i + 1}`;
-        const whrNumber = `WHR-${String(i + 1).padStart(4, '0')}`;
-
-        // Create receipt data
-        const receiptData = {
-          lba_unit_id: lbaUnitId,
-          lba_name: selectedLBAUnit?.lba_name || 'Test LBA Name',
-          date: dateStr,
-          whr_number: whrNumber,
-          description: description,
-          credit_amount: parseFloat(creditAmount.toFixed(2)),
-          debit_amount: parseFloat(debitAmount.toFixed(2)),
-          weight: 0,
-          balance_ghc: parseFloat(previousBalance.toFixed(2)),
-          previous_balance: parseFloat((previousBalance - creditAmount + debitAmount).toFixed(2)),
-          mts: parseFloat(mts.toFixed(2)),
-          bags: bags,
-          signature: signature,
-        };
-
-        // Create receipt items (1-3 items per receipt)
-        const numItems = Math.floor(Math.random() * 3) + 1;
-        const receiptItems: Omit<ReceiptItem, 'id' | 'receipt_id' | 'created_at'>[] = [];
-
-        for (let j = 0; j < numItems; j++) {
-          receiptItems.push({
-            description: `${j + 1}. ${description} (WHR: ${whrNumber}, Date: ${dateStr})`,
-            credit_amount: parseFloat((creditAmount / numItems).toFixed(2)),
-            debit_amount: parseFloat((debitAmount / numItems).toFixed(2)),
-            weight: 0,
-            mts: parseFloat((mts / numItems).toFixed(2)),
-            bags: Math.floor(bags / numItems),
-            item_order: j,
-          });
-        }
-
-        // Create the receipt
-        await createReceipt(receiptData, receiptItems);
-
-        // Small delay every 100 receipts to avoid overwhelming the database
-        if ((i + 1) % 100 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-          await showAlert(`Created ${i + 1} of ${totalReceipts} receipts...`);
-        }
-      }
-
-      await showAlert(`Successfully created ${totalReceipts} sample receipts!`);
-      router.push('/receipts');
-    } catch (error) {
-      console.error('Error filling sample data:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await showAlert(`Error creating sample data: ${errorMessage}`);
-    } finally {
-      setFillingSampleData(false);
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -590,29 +457,6 @@ export default function CreateStockCardPage() {
           <h2 className="text-3xl font-bold text-blue-600 underline">LBA STOCK CARD</h2>
         </div> */}
 
-        {/* <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">{t('nav.createReceipt')}</h2>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="success"
-              size="sm"
-              onClick={handleFillSampleData}
-              isLoading={fillingSampleData}
-              disabled={fillingSampleData || submitting}
-              title="Create 1000 sample receipts in the database"
-            >
-              {t('activityLog.fillSample')}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => setShowUnitForm(!showUnitForm)}
-            >
-              {showUnitForm ? t('common.cancel') : t('lbaUnit.newUnit')}
-            </Button>
-          </div>
-        </div> */}
 
         {/* {showUnitForm && (
           <div className="mb-6 bg-white shadow rounded-lg p-6">
