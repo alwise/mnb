@@ -21,11 +21,8 @@ jobs:
           node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - name: setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
+      - name: enable corepack (pnpm)
+        run: corepack enable
       - name: install dependencies
         run: pnpm install
       - name: cache Rust build
