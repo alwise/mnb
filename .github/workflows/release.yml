@@ -30,11 +30,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+      # On Windows, env var length/encoding can corrupt the base64 key. Use a file path instead.
+      - name: prepare signing key (Windows)
+        if: matrix.platform == 'windows-latest'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          $keyPath = Join-Path $env:GITHUB_WORKSPACE "src-tauri\signing_key.txt"
+          [System.IO.File]::WriteAllText($keyPath, $env:TAURI_SIGNING_PRIVATE_KEY, [System.Text.UTF8Encoding]::new($false))
       - name: build the app
         uses: tauri-apps/tauri-action@v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.platform == 'windows-latest' && format('{0}/src-tauri/signing_key.txt', github.workspace) || secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__ # the action replaces __VERSION__ with app version from tauri.conf.json
@@ -42,4 +50,4 @@ jobs:
           releaseBody: "See the assets to download this version and install."
           releaseDraft: false # must be false so /releases/latest serves this release and latest.json
           prerelease: false
-          uploadUpdaterJson: true
+          includeUpdaterJson: true

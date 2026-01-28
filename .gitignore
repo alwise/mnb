@@ -37,3 +37,4 @@ next-env.d.ts
 # Tauri
 /src-tauri/target
 /src-tauri/Cargo.lock
+/src-tauri/signing_key.txt
