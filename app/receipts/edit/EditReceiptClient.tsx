@@ -16,7 +16,6 @@ import {
   createLBAUnit,
 } from '@/lib/receipts';
 import { getReceiptPhotoDataUrl, saveReceiptPhoto } from '@/lib/settings';
-import { getUserSignatureDataUrl } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '@/lib/queryKeys';
@@ -48,6 +47,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
     previous_balance: '0',
     mts: '0',
     bags: '0',
+    signature: '',
   });
 
   const [items, setItems] = useState<Array<{
@@ -61,7 +61,6 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
     bags: string;
     balance_ghc: string;
     balance_lba: string;
-    signature: string;
   }>>([{
     serial_number: '1',
     date: new Date().toISOString().split('T')[0],
@@ -73,7 +72,6 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
     bags: '0',
     balance_ghc: '0',
     balance_lba: '0',
-    signature: '',
   }]);
 
   const [photo, setPhoto] = useState<File | null>(null);
@@ -95,15 +93,15 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
     lba_code: '',
   });
 
-  const [unitFormData, setUnitFormData] = useState({
-    unit: '',
-    lba_name: '',
-    crop: '',
-    season: '',
-    unit_head: '',
-    qci_name: '',
-    lba_code: '',
-  });
+  // const [unitFormData, setUnitFormData] = useState({
+  //   unit: '',
+  //   lba_name: '',
+  //   crop: '',
+  //   season: '',
+  //   unit_head: '',
+  //   qci_name: '',
+  //   lba_code: '',
+  // });
 
   // Parse receipt item description to extract serial number, date, WHR number
   function parseReceiptItem(item: ReceiptItem, index: number, receiptDate: string, receiptWHR: string) {
@@ -125,6 +123,11 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       ? descMatch[1].trim()
       : description.replace(/^\d+\.\s*/, '').replace(/\s*\(.*\)$/, '').trim() || description;
 
+    // Get signature from item - ensure it's a string
+    // const itemSignature = item?.signature !== "" && item.signature !== undefined && item.signature !== null ? String(item.signature) : "";
+
+    // console.log(`parseReceiptItem[${index}]: item.signature =`, item.signature, '-> parsed signature =', itemSignature);
+
     return {
       serial_number,
       date: date || receiptDate,
@@ -136,7 +139,6 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       bags: (item.bags || 0).toString(),
       balance_ghc: '0',
       balance_lba: '0',
-      signature: '',
     };
   }
 
@@ -184,6 +186,9 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         return;
       }
 
+      console.log('Receipt:', receipt);
+      console.log('Receipt items:', receipt.items);
+
       // Set form data
       setFormData({
         lba_unit_id: receipt.lba_unit_id.toString(),
@@ -197,6 +202,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         previous_balance: (receipt.previous_balance || 0).toString(),
         mts: receipt.mts.toString(),
         bags: receipt.bags.toString(),
+        signature: receipt.signature || '',
       });
 
       // Set unit fields
@@ -225,12 +231,16 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
 
       // Parse receipt items
       if (receipt.items && receipt.items.length > 0) {
-        const parsedItems = receipt.items.map((item, index) =>
-          parseReceiptItem(item, index, receipt.date, receipt.whr_number)
-        );
+        console.log('Parsing receipt items, count:', receipt.items.length);
+        const parsedItems = receipt.items.map((item, index) => {
+          console.log(`Item ${index} raw data:`, item);
+          return parseReceiptItem(item, index, receipt.date, receipt.whr_number);
+        });
+        console.log('Parsed items:', parsedItems);
         setItems(parsedItems);
       } else {
         // If no items, create one from receipt data
+        console.log('No items found, creating default item with signature:', receipt.signature);
         setItems([{
           serial_number: '1',
           date: receipt.date,
@@ -242,7 +252,6 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
           bags: receipt.bags.toString(),
           balance_ghc: receipt.balance_ghc.toString(),
           balance_lba: '0',
-          signature: '',
         }]);
       }
 
@@ -331,7 +340,6 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       bags: '0',
       balance_ghc: '0',
       balance_lba: '0',
-      signature: '',
     }]);
   }
 
@@ -400,36 +408,36 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
     }));
   }
 
-  async function handleCreateUnit(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      setSubmitting(true);
-      const unitId = await createLBAUnit(unitFormData);
-      const newUnit: LBAUnit = {
-        ...unitFormData,
-        id: unitId,
-      };
-      setSelectedLBAUnit(newUnit);
-      setLbaUnitDisplay(getLBAUnitDisplay(newUnit));
-      setFormData((prev) => ({ ...prev, lba_unit_id: unitId.toString() }));
-      setShowUnitForm(false);
-      setUnitFormData({
-        unit: '',
-        lba_name: '',
-        crop: '',
-        season: '',
-        unit_head: '',
-        qci_name: '',
-        lba_code: '',
-      });
-      await showAlert(t('lbaUnit.createSuccess'));
-    } catch (error) {
-      console.error('Error creating LBA unit:', error);
-      await showAlert(t('lbaUnit.createError'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  // async function handleCreateUnit(e: React.FormEvent) {
+  //   e.preventDefault();
+  //   try {
+  //     setSubmitting(true);
+  //     const unitId = await createLBAUnit(unitFormData);
+  //     const newUnit: LBAUnit = {
+  //       ...unitFormData,
+  //       id: unitId,
+  //     };
+  //     setSelectedLBAUnit(newUnit);
+  //     setLbaUnitDisplay(getLBAUnitDisplay(newUnit));
+  //     setFormData((prev) => ({ ...prev, lba_unit_id: unitId.toString() }));
+  //     setShowUnitForm(false);
+  //     setUnitFormData({
+  //       unit: '',
+  //       lba_name: '',
+  //       crop: '',
+  //       season: '',
+  //       unit_head: '',
+  //       qci_name: '',
+  //       lba_code: '',
+  //     });
+  //     await showAlert(t('lbaUnit.createSuccess'));
+  //   } catch (error) {
+  //     console.error('Error creating LBA unit:', error);
+  //     await showAlert(t('lbaUnit.createError'));
+  //   } finally {
+  //     setSubmitting(false);
+  //   }
+  // }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -473,17 +481,17 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       }
 
       // Use user signature - check if user has signature uploaded
-      let signature = 'User Signature';
-      if (user) {
-        try {
-          const userSignature = await getUserSignatureDataUrl(user.id);
-          if (userSignature) {
-            signature = 'User Signature';
-          }
-        } catch (error) {
-          console.log('No user signature found, using default');
-        }
-      }
+      // let signature = 'User Signature';
+      // if (user) {
+      //   try {
+      //     const userSignature = await getUserSignatureDataUrl(user.id);
+      //     if (userSignature) {
+      //       signature = 'User Signature';
+      //     }
+      //   } catch (error) {
+      //     console.log('No user signature found, using default');
+      //   }
+      // }
 
       const firstItem = items[0];
       const receiptDate = firstItem?.date || formData.date;
@@ -513,8 +521,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         balance_ghc: parseFloat(formData.balance_ghc) || 0,
         previous_balance: parseFloat(formData.previous_balance) || 0,
         mts: parseFloat(formData.mts) || 0,
-        bags: parseInt(formData.bags) || 0,
-        signature: signature,
+        bags: parseInt(formData.bags) || 0
       };
 
       const validItems = items.filter(item => item.description.trim() !== '');
@@ -523,7 +530,6 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         setSubmitting(false);
         return;
       }
-
       const receiptItems: Omit<ReceiptItem, 'id' | 'receipt_id' | 'created_at'>[] = validItems
         .map((item, index) => ({
           description: `${item.serial_number || (index + 1)}. ${item.description} (WHR: ${item.whr_number || 'N/A'}, Date: ${item.date || 'N/A'})`,
@@ -601,18 +607,17 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
           <h2 className="text-3xl font-bold text-blue-600 underline">LBA STOCK CARD</h2>
         </div> */}
 
-        <div className="mb-6 flex items-center justify-between">
+        {/* <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">{t('receipts.editReceipt')}</h2>
           <div className="flex gap-2">
             <Button
               type="button"
               variant="primary"
-              onClick={() => setShowUnitForm(!showUnitForm)}
-            >
+              onClick={() => setShowUnitForm(!showUnitForm)}>
               {showUnitForm ? t('common.cancel') : t('lbaUnit.newUnit')}
             </Button>
           </div>
-        </div>
+        </div> */}
         {/* 
         {showUnitForm && (
           <div className="mb-6 bg-white shadow rounded-lg p-6">
@@ -812,6 +817,8 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                         <br />
                         ({t('activityLog.balance').includes('(') ? t('activityLog.balance').split('(')[1] : 'GH¢)'}
                       </th>
+                      {/* signature column */}
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{"Signature"}</th>
                       <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{t('activityLog.action')}</th>
                     </tr>
                     <tr className="bg-blue-50">
@@ -833,10 +840,10 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                   </thead>
                   <tbody>
                     {items.map((item, index) => {
-                      const itemCredit = parseFloat(item.credit_amount) || 0;
-                      const itemDebit = parseFloat(item.debit_amount) || 0;
-                      const itemMts = parseFloat(item.mts) || 0;
-                      const itemBags = parseInt(item.bags) || 0;
+                      // const itemCredit = parseFloat(item.credit_amount) || 0;
+                      // const itemDebit = parseFloat(item.debit_amount) || 0;
+                      // const itemMts = parseFloat(item.mts) || 0;
+                      // const itemBags = parseInt(item.bags) || 0;
 
                       let cumCredit = cumulativeTotals.cumulative_credit;
                       let cumDebit = cumulativeTotals.cumulative_debit;
@@ -957,6 +964,19 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                           <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
                             {item.balance_ghc}
                           </td>
+                          <td className="border  border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
+                            {/* <Input
+                              type="text"
+                              // maxLength={20}
+                              inputMode='text'
+                              value={item.signature || ''}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^A-Za-z0-9]/g, '');
+                                updateItem(index, 'signature', val);
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
+                            /> */}
+                          </td>
                           <td className="border border-blue-600 px-0.5 py-1">
                             <div className="flex gap-0.5 justify-center">
                               <Button
@@ -983,6 +1003,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                               )}
                             </div>
                           </td>
+
                         </tr>
                       );
                     })}

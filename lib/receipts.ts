@@ -205,7 +205,6 @@ async function saveReceiptSnapshot(
         previous_balance: receipt.previous_balance,
         mts: receipt.mts,
         bags: receipt.bags,
-        signature: receipt.signature,
         created_at: receipt.created_at,
       },
       items: receipt.items || [],
@@ -515,7 +514,6 @@ export async function getReceiptById(
   `,
     [id],
   );
-
   receipt.items = items;
   return receipt;
 }
@@ -703,9 +701,8 @@ export async function updateReceipt(
           balance_ghc = $8,
           previous_balance = $9,
           mts = $10,
-          bags = $11,
-          signature = $12
-        WHERE id = $13`,
+          bags = $11
+        WHERE id = $12`,
         [
           receipt.lba_name,
           receipt.date,
@@ -718,7 +715,6 @@ export async function updateReceipt(
           previousBalance,
           receipt.mts,
           receipt.bags,
-          receipt.signature,
           id,
         ],
       );
@@ -824,7 +820,7 @@ export async function updateReceipt(
                 const baseIndex = batchStart + batch.indexOf(item);
                 await db.execute(
                   `INSERT INTO receipt_items (
-                    receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order
+                    receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order, signature
                   ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                   [
                     id,

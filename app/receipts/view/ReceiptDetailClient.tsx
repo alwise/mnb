@@ -1,9 +1,10 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @next/next/no-img-element */
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Printer, DownloadCloud } from 'lucide-react';
+import { Printer, DownloadCloud, X } from 'lucide-react';
 import { Button, useDialog } from '@/components/ui';
 import { getReceiptById, getReceiptTotals, deleteReceipt } from '@/lib/receipts';
 import { getReceiptPhotoDataUrl } from '@/lib/settings';
@@ -15,6 +16,7 @@ import type { ReceiptWithUnit, ReceiptItem } from '@/types';
 import { useTexts } from '@/hooks/useTexts';
 import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '@/lib/queryKeys';
+import PdfViewerModal from '@/components/PdfViewerModal';
 
 interface ParsedReceiptItem extends ReceiptItem {
   serial_number: string;
@@ -40,6 +42,8 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [userSignature, setUserSignature] = useState<string | null>(null);
   const [receiptPhoto, setReceiptPhoto] = useState<string | null>(null);
   const [parsedItems, setParsedItems] = useState<ParsedReceiptItem[]>([]);
@@ -214,7 +218,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list() });
       await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated() });
       await showAlert(t('receipts.deleteSuccess'));
-      router.push('/receipts');
+      router.replace('/receipts');
     } catch (error) {
       console.error('Error deleting receipt:', error);
       await showAlert(t('receipts.deleteError'));
@@ -224,7 +228,86 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
   }
 
   function handlePrint() {
-    window.print();
+    // window.print() doesn't work in Tauri webview
+    // In browser, use native print dialog
+    if (!isTauri()) {
+      window.print();
+    }
+  }
+
+  async function handlePrintWithDialog() {
+    if (!receipt) return;
+
+    try {
+      setPrinting(true);
+
+      // Generate PDF first
+      const html2canvas = (await import('html2canvas')).default;
+      const jsPDF = (await import('jspdf')).jsPDF;
+
+      const receiptContent = document.getElementById('receipt-content');
+      if (!receiptContent) {
+        await showAlert(t('receipts.stockCardNotFound'));
+        return;
+      }
+
+      // Convert HTML to canvas
+      const canvas = await html2canvas(receiptContent, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      // Create PDF
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgScaledWidth = imgWidth * ratio;
+      const imgScaledHeight = imgHeight * ratio;
+
+      // Calculate centering
+      const xOffset = (pdfWidth - imgScaledWidth) / 2;
+      const yOffset = (pdfHeight - imgScaledHeight) / 2;
+
+      pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgScaledWidth, imgScaledHeight);
+
+      // Create blob URL from PDF
+      const pdfBlob = pdf.output('blob');
+      const blobUrl = URL.createObjectURL(pdfBlob);
+
+      // Set the blob URL and open the PDF viewer
+      setPdfBlobUrl(blobUrl);
+      setPdfViewerOpen(true);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      const errorMessage = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : String(error) || 'Unknown error';
+      await showAlert(t('receipts.printError') + ': ' + errorMessage);
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  function handleClosePdfViewer() {
+    setPdfViewerOpen(false);
+    // Clean up blob URL to free memory
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
   }
 
   async function handleExportPDF() {
@@ -407,22 +490,31 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
       }
 
       await showAlert(t('receipts.printSuccess'));
+      setPrinting(false);
     } catch (error) {
       console.error('Error printing directly:', error);
-      await showAlert(t('receipts.printError'));
-    } finally {
       setPrinting(false);
+      // Fallback to showing print dialog if direct print fails
+      try {
+        await handlePrintWithDialog();
+      } catch (fallbackError) {
+        console.error('Fallback print dialog also failed:', fallbackError);
+        const errorMessage = fallbackError instanceof Error
+          ? fallbackError.message
+          : typeof fallbackError === 'string'
+            ? fallbackError
+            : String(fallbackError) || 'Unknown error';
+        await showAlert(t('receipts.printError') + ': ' + errorMessage);
+      }
     }
   }
 
   async function handlePrintClick() {
     if (isTauri()) {
-      if (hasPrinters && availablePrinters.length > 0) {
-        await handleDirectPrint();
-      } else {
-        await showAlert(t('receipts.printerNotFound'));
-      }
+      // Generate PDF and open Windows print dialog
+      await handlePrintWithDialog();
     } else {
+      // Use browser's native print dialog
       handlePrint();
     }
   }
@@ -484,24 +576,22 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
 
   return (
     <>
-      <div className="max-w-6xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
 
           <div className="mb-6 flex items-center justify-end no-print">
             <div className="flex space-x-3">
-              {/* Print Button */}
-              {hasPrinters && availablePrinters.length > 0 && (
-                <Button
-                  onClick={handlePrintClick}
-                  variant="primary"
-                  isLoading={printing}
-                  disabled={printing || exporting}
-                  className="flex items-center gap-2"
-                >
-                  <Printer className="h-5 w-5" />
-                  {t('receipts.print')}
-                </Button>
-              )}
+              {/* Print Button - Always visible, uses Windows default print dialog */}
+              <Button
+                onClick={handlePrintClick}
+                variant="primary"
+                isLoading={printing}
+                disabled={printing || exporting}
+                className="flex items-center gap-2"
+              >
+                <Printer className="h-5 w-5" />
+                {t('receipts.print')}
+              </Button>
               {/* Export PDF Button */}
               <Button
                 onClick={handleExportClick}
@@ -826,6 +916,15 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
           </div>
         </div>
       </div>
+
+      {/* PDF Viewer Modal */}
+      {pdfViewerOpen && pdfBlobUrl && receipt && (
+        <PdfViewerModal
+          pdfBlobUrl={pdfBlobUrl}
+          receiptId={receipt.whr_number ?? receipt.id ?? 'Unknown'}
+          onClose={handleClosePdfViewer}
+        />
+      )}
 
       {/* Print Styles */}
       <style jsx global>{`

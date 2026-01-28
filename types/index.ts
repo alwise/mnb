@@ -24,7 +24,7 @@ export interface Receipt {
   previous_balance: number;
   mts: number;
   bags: number;
-  signature: string;
+  signature?: string;
   created_at?: string;
 }
 

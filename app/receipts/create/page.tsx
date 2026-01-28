@@ -251,7 +251,7 @@ export default function CreateStockCardPage() {
       const credit = parseFloat(item.credit_amount) || 0;
       const debit = parseFloat(item.debit_amount) || 0;
       runningBalance = runningBalance + credit - debit;
-      return { ...item, balance_ghc: runningBalance.toFixed(2) };
+      return { ...item, signature: item.signature ?? '', balance_ghc: runningBalance.toFixed(2) };
     });
 
     setItems(itemsWithBalance);
@@ -340,17 +340,17 @@ export default function CreateStockCardPage() {
       }
 
       // Use user signature - check if user has signature uploaded
-      let signature = 'User Signature';
-      if (user) {
-        try {
-          const userSignature = await getUserSignatureDataUrl(user.id);
-          if (userSignature) {
-            signature = 'User Signature';
-          }
-        } catch (error) {
-          console.log('No user signature found, using default');
-        }
-      }
+      // let signature = 'User Signature';
+      // if (user) {
+      //   try {
+      //     const userSignature = await getUserSignatureDataUrl(user.id);
+      //     if (userSignature) {
+      //       signature = 'User Signature';
+      //     }
+      //   } catch (error) {
+      //     console.log('No user signature found, using default');
+      //   }
+      // }
 
       // Use the first item's date and whr_number if available, otherwise use form data
       const firstItem = items[0];
@@ -383,7 +383,7 @@ export default function CreateStockCardPage() {
         previous_balance: parseFloat(formData.previous_balance) || 0,
         mts: parseFloat(formData.mts) || 0,
         bags: parseInt(formData.bags) || 0,
-        signature: signature,
+        signature: "",
       };
 
       // Convert items to ReceiptItem format
@@ -657,6 +657,8 @@ export default function CreateStockCardPage() {
                         <br />
                         ({t('activityLog.balance').includes('(') ? t('activityLog.balance').split('(')[1] : 'GH¢)'}
                       </th>
+                      {/* signature column */}
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{"Signature"}</th>
                       <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{t('activityLog.action')}</th>
                     </tr>
                     <tr className="bg-blue-50">
@@ -675,13 +677,14 @@ export default function CreateStockCardPage() {
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
                     </tr>
+
                   </thead>
                   <tbody>
                     {items.map((item, index) => {
-                      const itemCredit = parseFloat(item.credit_amount) || 0;
-                      const itemDebit = parseFloat(item.debit_amount) || 0;
-                      const itemMts = parseFloat(item.mts) || 0;
-                      const itemBags = parseInt(item.bags) || 0;
+                      // const itemCredit = parseFloat(item.credit_amount) || 0;
+                      // const itemDebit = parseFloat(item.debit_amount) || 0;
+                      // const itemMts = parseFloat(item.mts) || 0;
+                      // const itemBags = parseInt(item.bags) || 0;
 
                       // Calculate cumulative values up to this item
                       let cumCredit = cumulativeTotals.cumulative_credit;
@@ -802,6 +805,17 @@ export default function CreateStockCardPage() {
                           </td>
                           <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
                             {item.balance_ghc}
+                          </td>
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
+                            {/* show signature initials in the center of the cell */}
+                            {/* <Input
+                              type="text"
+                              // maxLength={3}
+                              inputMode='text'
+                              value={item.signature || ''}
+                              onChange={(e) => updateItem(index, 'signature', e.target.value)}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
+                            /> */}
                           </td>
                           <td className="border border-blue-600 px-0.5 py-1">
                             <div className="flex gap-0.5 justify-center">
