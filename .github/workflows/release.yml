@@ -30,14 +30,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
-      # On Windows, env var length/encoding can corrupt the base64 key. Use a file path instead.
+      # On Windows, env var + CRLF/whitespace often corrupt the base64 key. Write to file and strip whitespace.
       - name: prepare signing key (Windows)
         if: matrix.platform == 'windows-latest'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          $raw = $env:TAURI_SIGNING_PRIVATE_KEY
+          $key = $raw -replace '\s', ''
           $keyPath = Join-Path $env:GITHUB_WORKSPACE "src-tauri\signing_key.txt"
-          [System.IO.File]::WriteAllText($keyPath, $env:TAURI_SIGNING_PRIVATE_KEY, [System.Text.UTF8Encoding]::new($false))
+          [System.IO.File]::WriteAllText($keyPath, $key, [System.Text.UTF8Encoding]::new($false))
       - name: build the app
         uses: tauri-apps/tauri-action@v0.6.1
         env:
