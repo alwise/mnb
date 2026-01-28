@@ -51,10 +51,11 @@ export async function createLBAUnit(
   try {
     // Insert LBA unit (auto-committed)
     const result = await db.execute(
-      `INSERT INTO lba_units (unit_name, crop, season, unit_head, qci_name, lba_code)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO lba_units (unit, lba_name, crop, season, unit_head, qci_name, lba_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
-        unit.unit_name,
+        unit.unit,
+        unit.lba_name,
         unit.crop,
         unit.season,
         unit.unit_head,
@@ -129,6 +130,36 @@ export async function getLBAUnitById(id: number): Promise<LBAUnit | null> {
   return result.length > 0 ? result[0] : null;
 }
 
+export async function updateLBAUnit(
+  id: number,
+  unit: Omit<LBAUnit, "id" | "created_at">,
+): Promise<void> {
+  console.log("updateLBAUnit called with id:", id, "unit:", unit);
+  const db = await getDatabase();
+  const result = await db.execute(
+    `UPDATE lba_units SET
+      unit = $1,
+      lba_name = $2,
+      crop = $3,
+      season = $4,
+      unit_head = $5,
+      qci_name = $6,
+      lba_code = $7
+    WHERE id = $8`,
+    [
+      unit.unit,
+      unit.lba_name,
+      unit.crop,
+      unit.season,
+      unit.unit_head,
+      unit.qci_name,
+      unit.lba_code,
+      id,
+    ],
+  );
+  console.log("updateLBAUnit result:", result);
+}
+
 // Get previous balance for an LBA (balance from the most recent receipt before this date)
 export async function getPreviousBalance(
   lbaUnitId: number,
@@ -179,7 +210,7 @@ async function saveReceiptSnapshot(
       },
       items: receipt.items || [],
       unit_info: {
-        unit_name: receipt.unit_name,
+        unit: receipt.unit,
         lba_code: receipt.lba_code,
         crop: receipt.crop,
         season: receipt.season,
@@ -232,12 +263,12 @@ export async function createReceipt(
     totalsResult.length > 0
       ? totalsResult[0]
       : {
-        lba_unit_id: receipt.lba_unit_id,
-        cumulative_credit: 0,
-        cumulative_debit: 0,
-        cumulative_mts: 0,
-        cumulative_bags: 0,
-      };
+          lba_unit_id: receipt.lba_unit_id,
+          cumulative_credit: 0,
+          cumulative_debit: 0,
+          cumulative_mts: 0,
+          cumulative_bags: 0,
+        };
 
   console.log("Current totals:", currentTotals);
 
@@ -248,11 +279,12 @@ export async function createReceipt(
     // Insert receipt
     const result = await db.execute(
       `INSERT INTO receipts (
-        lba_unit_id, date, whr_number, description, credit_amount, debit_amount,
+        lba_unit_id, lba_name, date, whr_number, description, credit_amount, debit_amount,
         weight, balance_ghc, previous_balance, mts, bags, signature
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         receipt.lba_unit_id,
+        receipt.lba_name,
         receipt.date,
         receipt.whr_number,
         receipt.description,
@@ -339,10 +371,13 @@ export async function getAllReceipts(): Promise<ReceiptWithUnit[]> {
   return await db.select<ReceiptWithUnit[]>(`
     SELECT 
       r.*,
-      u.unit_name,
+      u.unit,
+      u.lba_name,
       u.lba_code,
       u.crop,
-      u.season
+      u.season,
+      u.unit_head,
+      u.qci_name
     FROM receipts r
     INNER JOIN lba_units u ON r.lba_unit_id = u.id
     ORDER BY r.date DESC, r.created_at DESC
@@ -356,6 +391,7 @@ export interface PaginatedReceiptsParams {
     dateFrom?: string;
     dateTo?: string;
     lbaUnitId?: number;
+    lbaName?: string;
     crop?: string;
   };
 }
@@ -389,6 +425,10 @@ export async function getReceiptsPaginated(
     whereConditions.push(`r.lba_unit_id = $${paramIndex++}`);
     queryParams.push(filters.lbaUnitId);
   }
+  if (filters?.lbaName) {
+    whereConditions.push(`r.lba_name = $${paramIndex++}`);
+    queryParams.push(filters.lbaName);
+  }
   if (filters?.crop) {
     whereConditions.push(`u.crop LIKE $${paramIndex++}`);
     queryParams.push(`%${filters.crop}%`);
@@ -415,10 +455,13 @@ export async function getReceiptsPaginated(
     `
     SELECT 
       r.*,
-      u.unit_name,
+      u.unit,
+      u.lba_name,
       u.lba_code,
       u.crop,
-      u.season
+      u.season,
+      u.unit_head,
+      u.qci_name
     FROM receipts r
     INNER JOIN lba_units u ON r.lba_unit_id = u.id
     ${whereClause}
@@ -443,7 +486,8 @@ export async function getReceiptById(
     `
     SELECT 
       r.*,
-      u.unit_name,
+      u.unit,
+      u.lba_name,
       u.lba_code,
       u.crop,
       u.season,
@@ -484,10 +528,13 @@ export async function getReceiptsByUnitId(
     `
     SELECT 
       r.*,
-      u.unit_name,
+      u.unit,
+      u.lba_name,
       u.lba_code,
       u.crop,
-      u.season
+      u.season,
+      u.unit_head,
+      u.qci_name
     FROM receipts r
     INNER JOIN lba_units u ON r.lba_unit_id = u.id
     WHERE r.lba_unit_id = $1
@@ -562,88 +609,105 @@ export async function updateReceipt(
   receipt: Omit<Receipt, "id" | "created_at" | "lba_unit_id">,
   items?: Omit<ReceiptItem, "id" | "receipt_id" | "created_at">[],
 ): Promise<void> {
-  const db = await getDatabase();
+  await executeWithRetry(
+    async () => {
+      const db = await getDatabase();
 
-  // Get old receipt to calculate differences
-  const oldReceipt = await db.select<Receipt[]>(
-    "SELECT * FROM receipts WHERE id = $1",
-    [id],
-  );
+      // Get old receipt to calculate differences
+      const oldReceipt = await db.select<Receipt[]>(
+        "SELECT * FROM receipts WHERE id = $1",
+        [id],
+      );
 
-  if (oldReceipt.length === 0) {
-    throw new Error("Receipt not found");
-  }
+      if (oldReceipt.length === 0) {
+        throw new Error("Receipt not found");
+      }
 
-  const old = oldReceipt[0];
+      const old = oldReceipt[0];
 
-  // Get full receipt with items and unit info for snapshot
-  const fullReceipt = await getReceiptById(id);
-  if (!fullReceipt) {
-    throw new Error("Receipt not found");
-  }
+      // Get full receipt with items and unit info for snapshot
+      const fullReceipt = await getReceiptById(id);
+      if (!fullReceipt) {
+        throw new Error("Receipt not found");
+      }
 
-  // Create change summary
-  const changes: string[] = [];
-  if (old.date !== receipt.date)
-    changes.push(`Date: ${old.date} → ${receipt.date}`);
-  if (old.whr_number !== receipt.whr_number)
-    changes.push(`WHR Number: ${old.whr_number} → ${receipt.whr_number}`);
-  if (old.description !== receipt.description)
-    changes.push(`Description changed`);
-  if (old.credit_amount !== receipt.credit_amount)
-    changes.push(`Credit: ${old.credit_amount} → ${receipt.credit_amount}`);
-  if (old.debit_amount !== receipt.debit_amount)
-    changes.push(`Debit: ${old.debit_amount} → ${receipt.debit_amount}`);
-  if (old.mts !== receipt.mts) changes.push(`MTS: ${old.mts} → ${receipt.mts}`);
-  if (old.bags !== receipt.bags)
-    changes.push(`Bags: ${old.bags} → ${receipt.bags}`);
-  if (old.balance_ghc !== receipt.balance_ghc)
-    changes.push(`Balance: ${old.balance_ghc} → ${receipt.balance_ghc}`);
+      // Create change summary
+      const changes: string[] = [];
+      if (old.date !== receipt.date)
+        changes.push(`Date: ${old.date} → ${receipt.date}`);
+      if (old.whr_number !== receipt.whr_number)
+        changes.push(`WHR Number: ${old.whr_number} → ${receipt.whr_number}`);
+      if (old.description !== receipt.description)
+        changes.push(`Description changed`);
+      if (old.credit_amount !== receipt.credit_amount)
+        changes.push(`Credit: ${old.credit_amount} → ${receipt.credit_amount}`);
+      if (old.debit_amount !== receipt.debit_amount)
+        changes.push(`Debit: ${old.debit_amount} → ${receipt.debit_amount}`);
+      if (old.mts !== receipt.mts)
+        changes.push(`MTS: ${old.mts} → ${receipt.mts}`);
+      if (old.bags !== receipt.bags)
+        changes.push(`Bags: ${old.bags} → ${receipt.bags}`);
+      if (old.balance_ghc !== receipt.balance_ghc)
+        changes.push(`Balance: ${old.balance_ghc} → ${receipt.balance_ghc}`);
 
-  const oldItemsCount = fullReceipt.items?.length || 0;
-  const newItemsCount = items?.length || 0;
-  if (oldItemsCount !== newItemsCount) {
-    changes.push(`Items count: ${oldItemsCount} → ${newItemsCount}`);
-  }
+      const oldItemsCount = fullReceipt.items?.length || 0;
+      const newItemsCount = items?.length || 0;
+      if (oldItemsCount !== newItemsCount) {
+        changes.push(`Items count: ${oldItemsCount} → ${newItemsCount}`);
+      }
 
-  const changeSummary =
-    changes.length > 0 ? changes.join("; ") : "Minor updates";
+      const changeSummary =
+        changes.length > 0 ? changes.join("; ") : "Minor updates";
 
-  // Save snapshot before updating (outside transaction to ensure it's saved even if update fails)
-  await saveReceiptSnapshot(id, fullReceipt, changeSummary);
+      // Save snapshot before updating (outside transaction to ensure it's saved even if update fails)
+      await saveReceiptSnapshot(id, fullReceipt, changeSummary);
 
-  // Get previous balance if not provided (do this before transaction to reduce lock time)
-  let previousBalance = receipt.previous_balance;
-  if (previousBalance === undefined || previousBalance === null) {
-    previousBalance = await getPreviousBalance(old.lba_unit_id, receipt.date);
-  }
+      // Get previous balance if not provided (do this before transaction to reduce lock time)
+      let previousBalance = receipt.previous_balance;
+      if (previousBalance === undefined || previousBalance === null) {
+        previousBalance = await getPreviousBalance(
+          old.lba_unit_id,
+          receipt.date,
+        );
+      }
 
-  let transactionStarted = false;
-  let transactionRolledBack = false;
-  let lastError: Error | null = null;
+      // Tauri SQL plugin uses a connection pool; each execute() may use a different
+      // connection, so BEGIN/COMMIT/ROLLBACK cause "cannot commit - no transaction is active".
+      // Run each statement in auto-commit mode. If one fails, earlier ones may have committed.
+      // The edit UI refetches from DB on error so the user sees current state.
 
-  try {
-    await db.execute("BEGIN TRANSACTION");
-    transactionStarted = true;
-    transactionRolledBack = false;
+      console.log("Executing UPDATE receipts with:", {
+        id,
+        lba_name: receipt.lba_name,
+        date: receipt.date,
+        whr_number: receipt.whr_number,
+        description: receipt.description,
+        credit_amount: receipt.credit_amount,
+        debit_amount: receipt.debit_amount,
+        weight: receipt.weight,
+        balance_ghc: receipt.balance_ghc,
+        previous_balance: previousBalance,
+        mts: receipt.mts,
+        bags: receipt.bags,
+      });
 
-    // Update receipt
-    try {
-      await db.execute(
+      const updateResult = await db.execute(
         `UPDATE receipts SET
-          date = $1,
-          whr_number = $2,
-          description = $3,
-          credit_amount = $4,
-          debit_amount = $5,
-          weight = $6,
-          balance_ghc = $7,
-          previous_balance = $8,
-          mts = $9,
-          bags = $10,
-          signature = $11
-        WHERE id = $12`,
+          lba_name = $1,
+          date = $2,
+          whr_number = $3,
+          description = $4,
+          credit_amount = $5,
+          debit_amount = $6,
+          weight = $7,
+          balance_ghc = $8,
+          previous_balance = $9,
+          mts = $10,
+          bags = $11,
+          signature = $12
+        WHERE id = $13`,
         [
+          receipt.lba_name,
           receipt.date,
           receipt.whr_number,
           receipt.description,
@@ -658,26 +722,15 @@ export async function updateReceipt(
           id,
         ],
       );
-    } catch (updateError) {
-      lastError =
-        updateError instanceof Error
-          ? updateError
-          : new Error(String(updateError));
-      console.error("Error updating receipt:", lastError);
-      throw lastError;
-    }
 
-    // Update totals immediately after receipt update to minimize lock time
-    // Ensure receipt_totals row exists first
-    try {
-      // Check if totals row exists, if not create it
+      console.log("UPDATE receipts result:", updateResult);
+
       const totalsCheck = await db.select<{ count: number }[]>(
         "SELECT COUNT(*) as count FROM receipt_totals WHERE lba_unit_id = $1",
         [old.lba_unit_id],
       );
 
       if (totalsCheck[0]?.count === 0) {
-        // Create the totals row if it doesn't exist
         await db.execute(
           `INSERT INTO receipt_totals (lba_unit_id, cumulative_credit, cumulative_debit, cumulative_mts, cumulative_bags, last_updated)
            VALUES ($1, 0, 0, 0, 0, datetime('now'))`,
@@ -705,177 +758,94 @@ export async function updateReceipt(
           old.lba_unit_id,
         ],
       );
-    } catch (totalsError) {
-      lastError =
-        totalsError instanceof Error
-          ? totalsError
-          : new Error(String(totalsError));
-      console.error("Error updating receipt totals:", lastError);
-      throw lastError;
-    }
 
-    // Update receipt items if provided
-    if (items !== undefined) {
-      // Delete existing items
-      await db.execute("DELETE FROM receipt_items WHERE receipt_id = $1", [id]);
+      if (items !== undefined) {
+        await db.execute("DELETE FROM receipt_items WHERE receipt_id = $1", [
+          id,
+        ]);
 
-      // Insert new items - use optimized batch inserts
-      if (items.length > 0) {
-        const BATCH_SIZE = 50; // Insert 50 items at a time to balance performance and memory
-        for (
-          let batchStart = 0;
-          batchStart < items.length;
-          batchStart += BATCH_SIZE
-        ) {
-          const batchEnd = Math.min(batchStart + BATCH_SIZE, items.length);
-          const batch = items.slice(batchStart, batchEnd);
+        if (items.length > 0) {
+          const BATCH_SIZE = 50;
+          for (
+            let batchStart = 0;
+            batchStart < items.length;
+            batchStart += BATCH_SIZE
+          ) {
+            const batchEnd = Math.min(batchStart + BATCH_SIZE, items.length);
+            const batch = items.slice(batchStart, batchEnd);
 
-          // Build bulk insert query with multiple VALUES
-          const valuePlaceholders: string[] = [];
-          const params: any[] = [];
-          let paramCounter = 1;
+            const valuePlaceholders: string[] = [];
+            const params: unknown[] = [];
+            let paramCounter = 1;
 
-          batch.forEach((item, i) => {
-            const baseIndex = batchStart + i;
-            valuePlaceholders.push(
-              `($${paramCounter}, $${paramCounter + 1}, $${paramCounter + 2}, $${paramCounter + 3}, $${paramCounter + 4}, $${paramCounter + 5}, $${paramCounter + 6}, $${paramCounter + 7})`,
-            );
-            params.push(
-              id,
-              item.description,
-              item.credit_amount,
-              item.debit_amount,
-              item.weight,
-              item.mts,
-              item.bags,
-              item.item_order ?? baseIndex,
-            );
-            paramCounter += 8;
-          });
+            batch.forEach((item, i) => {
+              const baseIndex = batchStart + i;
+              valuePlaceholders.push(
+                `($${paramCounter}, $${paramCounter + 1}, $${paramCounter + 2}, $${paramCounter + 3}, $${paramCounter + 4}, $${paramCounter + 5}, $${paramCounter + 6}, $${paramCounter + 7})`,
+              );
+              params.push(
+                id,
+                item.description,
+                item.credit_amount,
+                item.debit_amount,
+                item.weight,
+                item.mts,
+                item.bags,
+                item.item_order ?? baseIndex,
+              );
+              paramCounter += 8;
+            });
 
-          // Execute bulk insert for this batch
-          try {
-            await db.execute(
-              `INSERT INTO receipt_items (
-                receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order
-              ) VALUES ${valuePlaceholders.join(", ")}`,
-              params,
-            );
-          } catch (bulkError) {
-            const bulkErrorMsg =
-              bulkError instanceof Error
-                ? bulkError.message
-                : String(bulkError);
-            // If this is a transaction-ending error (constraint violation, etc.), re-throw it
-            // SQLite will have auto-rolled back the transaction
-            if (
-              bulkErrorMsg.includes("constraint") ||
-              bulkErrorMsg.includes("UNIQUE") ||
-              bulkErrorMsg.includes("FOREIGN KEY") ||
-              bulkErrorMsg.includes("NOT NULL")
-            ) {
-              transactionRolledBack = true;
-              throw bulkError;
-            }
-            // Fallback to individual inserts if bulk insert is not supported (syntax error, etc.)
-            console.warn(
-              "Bulk insert failed, using individual inserts for batch:",
-              bulkError,
-            );
-            for (const item of batch) {
-              const baseIndex = batchStart + batch.indexOf(item);
+            try {
               await db.execute(
                 `INSERT INTO receipt_items (
                   receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [
-                  id,
-                  item.description,
-                  item.credit_amount,
-                  item.debit_amount,
-                  item.weight,
-                  item.mts,
-                  item.bags,
-                  item.item_order ?? baseIndex,
-                ],
+                ) VALUES ${valuePlaceholders.join(", ")}`,
+                params,
               );
+            } catch (bulkError) {
+              const bulkErrorMsg =
+                bulkError instanceof Error
+                  ? bulkError.message
+                  : String(bulkError);
+              if (
+                bulkErrorMsg.includes("constraint") ||
+                bulkErrorMsg.includes("UNIQUE") ||
+                bulkErrorMsg.includes("FOREIGN KEY") ||
+                bulkErrorMsg.includes("NOT NULL")
+              ) {
+                throw bulkError;
+              }
+              console.warn(
+                "Bulk insert failed, using individual inserts:",
+                bulkError,
+              );
+              for (const item of batch) {
+                const baseIndex = batchStart + batch.indexOf(item);
+                await db.execute(
+                  `INSERT INTO receipt_items (
+                    receipt_id, description, credit_amount, debit_amount, weight, mts, bags, item_order
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                  [
+                    id,
+                    item.description,
+                    item.credit_amount,
+                    item.debit_amount,
+                    item.weight,
+                    item.mts,
+                    item.bags,
+                    item.item_order ?? baseIndex,
+                  ],
+                );
+              }
             }
           }
         }
       }
-    }
-
-    // Commit transaction only if it's still active
-    if (transactionStarted && !transactionRolledBack) {
-      try {
-        await db.execute("COMMIT");
-        transactionStarted = false;
-      } catch (commitError) {
-        transactionStarted = false;
-        const commitMsg =
-          commitError instanceof Error
-            ? commitError.message
-            : String(commitError);
-        // If transaction was already closed/rolled back
-        if (
-          commitMsg.includes("no transaction is active") ||
-          commitMsg.includes("cannot commit")
-        ) {
-          // Transaction was auto-rolled back by SQLite - this means an error occurred
-          // Throw the original error if we have it, otherwise throw a generic message
-          transactionRolledBack = true;
-          const errorMsg = (lastError as any)?.message
-            ? `Transaction was rolled back automatically. Error: ${(lastError as any).message}`
-            : "Transaction was rolled back automatically. A database error occurred during the transaction.";
-          throw new Error(errorMsg);
-        }
-        throw commitError;
-      }
-    } else if (transactionRolledBack) {
-      // Transaction was rolled back, don't try to commit
-      const errorMsg = (lastError as any)?.message
-        ? `Transaction was rolled back due to a database error: ${(lastError as any).message}`
-        : "Transaction was rolled back due to a database error.";
-      throw new Error(errorMsg);
-    }
-  } catch (error) {
-    // Store the error if we don't have one yet
-    if (!lastError) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-    }
-
-    // Mark transaction as rolled back if we get here
-    transactionRolledBack = true;
-
-    // Try to rollback only if transaction was started and not already rolled back
-    if (transactionStarted && !transactionRolledBack) {
-      try {
-        await db.execute("ROLLBACK");
-      } catch (rollbackError) {
-        // Transaction might already be rolled back, log but don't fail
-        const rollbackMsg =
-          rollbackError instanceof Error
-            ? rollbackError.message
-            : String(rollbackError);
-        if (
-          !rollbackMsg.includes("no transaction is active") &&
-          !rollbackMsg.includes("cannot rollback")
-        ) {
-          console.warn("Rollback failed:", rollbackError);
-        }
-      }
-    }
-    transactionStarted = false;
-
-    // Log the actual error for debugging
-    console.error("updateReceipt error:", error);
-    if (lastError && lastError !== error) {
-      console.error("Original error:", lastError);
-    }
-
-    // Throw the original error if we have it, otherwise throw the caught error
-    throw lastError || error;
-  }
+    },
+    3,
+    150,
+  );
 }
 
 export async function deleteReceipt(id: number): Promise<void> {
@@ -892,32 +862,20 @@ export async function deleteReceipt(id: number): Promise<void> {
 
   const rec = receipt[0];
 
-  await db.execute("BEGIN TRANSACTION");
-
-  try {
-    // Delete receipt items (cascade should handle this, but being explicit)
-    await db.execute("DELETE FROM receipt_items WHERE receipt_id = $1", [id]);
-
-    // Delete receipt
-    await db.execute("DELETE FROM receipts WHERE id = $1", [id]);
-
-    // Update totals (subtract deleted receipt values)
-    await db.execute(
-      `UPDATE receipt_totals SET
-        cumulative_credit = cumulative_credit - $1,
-        cumulative_debit = cumulative_debit - $2,
-        cumulative_mts = cumulative_mts - $3,
-        cumulative_bags = cumulative_bags - $4,
-        last_updated = datetime('now')
-      WHERE lba_unit_id = $5`,
-      [rec.credit_amount, rec.debit_amount, rec.mts, rec.bags, rec.lba_unit_id],
-    );
-
-    await db.execute("COMMIT");
-  } catch (error) {
-    await db.execute("ROLLBACK");
-    throw error;
-  }
+  // No explicit transaction - Tauri SQL plugin uses a connection pool;
+  // BEGIN/COMMIT on different connections cause "no transaction is active".
+  await db.execute("DELETE FROM receipt_items WHERE receipt_id = $1", [id]);
+  await db.execute("DELETE FROM receipts WHERE id = $1", [id]);
+  await db.execute(
+    `UPDATE receipt_totals SET
+      cumulative_credit = cumulative_credit - $1,
+      cumulative_debit = cumulative_debit - $2,
+      cumulative_mts = cumulative_mts - $3,
+      cumulative_bags = cumulative_bags - $4,
+      last_updated = datetime('now')
+    WHERE lba_unit_id = $5`,
+    [rec.credit_amount, rec.debit_amount, rec.mts, rec.bags, rec.lba_unit_id],
+  );
 }
 
 // Get receipts grouped by LBA with outstanding balance
@@ -930,10 +888,12 @@ export async function getReceiptsGroupedByLBA(): Promise<
   const receipts = await db.select<ReceiptWithUnit[]>(`
     SELECT 
       r.*,
-      u.unit_name,
+      u.lba_name,
       u.lba_code,
       u.crop,
-      u.season
+      u.season,
+      u.unit_head,
+      u.qci_name
     FROM receipts r
     INNER JOIN lba_units u ON r.lba_unit_id = u.id
     ORDER BY r.date DESC, r.created_at DESC
@@ -970,16 +930,19 @@ export async function getReceiptsGroupedByLBA(): Promise<
     }
   });
 
-  // Group by NAME OF LBA (unit_name)
+  // Group by NAME OF LBA (lba_name field in receipts)
   const grouped = new Map<string, ReceiptGroupedByLBA>();
 
   receipts.forEach((receipt) => {
-    if (!receipt.unit_name) return;
+    // Use lba_name from receipt
+    const lbaName = receipt.lba_name;
+    if (!lbaName) return;
 
-    if (!grouped.has(receipt.unit_name)) {
-      grouped.set(receipt.unit_name, {
-        lba_unit_id: receipt.lba_unit_id, // Keep the first unit ID for type compatibility
-        unit_name: receipt.unit_name,
+    if (!grouped.has(lbaName)) {
+      grouped.set(lbaName, {
+        lba_name: lbaName,
+        lba_unit_id: receipt.lba_unit_id,
+        unit: lbaName,
         lba_code: receipt.lba_code || "",
         crop: receipt.crop,
         season: receipt.season,
@@ -988,12 +951,14 @@ export async function getReceiptsGroupedByLBA(): Promise<
       });
     }
 
-    const group = grouped.get(receipt.unit_name)!;
+    const group = grouped.get(lbaName)!;
     group.receipts.push(receipt);
   });
 
-  // Calculate outstanding balance (balance from most recent receipt)
-  const result = Array.from(grouped.values());
+  // Calculate outstanding balance and sort by Name
+  const result = Array.from(grouped.values()).sort((a, b) =>
+    (a.unit || "").localeCompare(b.unit || ""),
+  );
   result.forEach((group) => {
     if (group.receipts.length > 0) {
       // Most recent receipt's balance is the outstanding balance
@@ -1011,27 +976,46 @@ export async function searchLBAUnits(
 ): Promise<LBAUnit[]> {
   const db = await getDatabase();
   const searchTerm = `%${query}%`;
-  return await db.select<LBAUnit[]>(
+
+  // Search units from lba_units table by unit or lba_name
+  const units = await db.select<LBAUnit[]>(
     `
     SELECT * FROM lba_units 
-    WHERE 
-      unit_name LIKE $1 OR 
-      lba_code LIKE $1 OR 
-      crop LIKE $1 OR 
-      season LIKE $1 OR
-      unit_head LIKE $1 OR
-      qci_name LIKE $1
-    ORDER BY 
-      CASE 
-        WHEN unit_name LIKE $1 THEN 1
-        WHEN lba_code LIKE $1 THEN 2
-        ELSE 3
-      END,
-      created_at DESC
+    WHERE unit LIKE $1 OR lba_name LIKE $1
+    ORDER BY lba_name ASC
     LIMIT $2
   `,
     [searchTerm, limit],
   );
+
+  // If we have space, also look for unique lba_names in receipts that might be slightly different
+  if (units.length < limit) {
+    const remainingLimit = limit - units.length;
+    const placeholders =
+      units.length > 0 ? units.map((_, i) => `$${i + 2}`).join(",") : "''";
+    const namesResult = await db.select<{ lba_name: string }[]>(
+      `SELECT DISTINCT lba_name FROM receipts 
+       WHERE lba_name LIKE $1 
+       AND lba_name NOT IN (${placeholders})
+       LIMIT $${units.length + 2}`,
+      [searchTerm, ...units.map((u) => u.lba_name), remainingLimit],
+    );
+
+    // Map these names to partial LBAUnit objects
+    const additionalUnits: LBAUnit[] = namesResult.map((r) => ({
+      unit: r.lba_name,
+      lba_name: r.lba_name,
+      crop: "",
+      season: "",
+      unit_head: "",
+      qci_name: "",
+      lba_code: "",
+    }));
+
+    return [...units, ...additionalUnits];
+  }
+
+  return units;
 }
 
 export async function searchWHRNumbers(

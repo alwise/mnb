@@ -15,12 +15,17 @@ import { createLBAUnit } from '@/lib/receipts';
 import { saveReceiptPhoto } from '@/lib/settings';
 import { getUserSignatureDataUrl } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTexts } from '@/hooks/useTexts';
+import { useQueryClient } from '@tanstack/react-query';
+import { QUERY_KEYS } from '@/lib/queryKeys';
 import type { LBAUnit, ReceiptItem } from '@/types';
 
 export default function CreateStockCardPage() {
   const router = useRouter();
   const { showAlert } = useDialog();
   const { user } = useAuth();
+  const { t } = useTexts();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fillingSampleData, setFillingSampleData] = useState(false);
@@ -78,7 +83,8 @@ export default function CreateStockCardPage() {
   });
 
   const [unitFields, setUnitFields] = useState({
-    unit_name: '',
+    unit: '',
+    lba_name: '',
     crop: '',
     season: '',
     unit_head: '',
@@ -87,7 +93,8 @@ export default function CreateStockCardPage() {
   });
 
   const [unitFormData, setUnitFormData] = useState({
-    unit_name: '',
+    unit: '',
+    lba_name: '',
     crop: '',
     season: '',
     unit_head: '',
@@ -148,7 +155,8 @@ export default function CreateStockCardPage() {
     }
     // Auto-fill all fields when unit is selected
     setUnitFields({
-      unit_name: unit.unit_name || '',
+      unit: unit.unit || '',
+      lba_name: unit.lba_name || '',
       crop: unit.crop || '',
       season: unit.season || '',
       unit_head: unit.unit_head || '',
@@ -158,7 +166,7 @@ export default function CreateStockCardPage() {
   }
 
   function getLBAUnitDisplay(unit: LBAUnit): string {
-    return `${unit.unit_name} (${unit.lba_code}) - ${unit.crop} ${unit.season}`;
+    return `${unit.lba_name}`;
   }
 
   useEffect(() => {
@@ -272,17 +280,18 @@ export default function CreateStockCardPage() {
       setFormData((prev) => ({ ...prev, lba_unit_id: unitId.toString() }));
       setShowUnitForm(false);
       setUnitFormData({
-        unit_name: '',
+        unit: '',
+        lba_name: '',
         crop: '',
         season: '',
         unit_head: '',
         qci_name: '',
         lba_code: '',
       });
-      await showAlert('LBA Unit created successfully!');
+      await showAlert(t('lbaUnit.createSuccess'));
     } catch (error) {
       console.error('Error creating LBA unit:', error);
-      await showAlert('Error creating LBA unit');
+      await showAlert(t('lbaUnit.createError'));
     } finally {
       setSubmitting(false);
     }
@@ -302,7 +311,8 @@ export default function CreateStockCardPage() {
       } else {
         // Create a test LBA unit
         const testUnit = {
-          unit_name: 'Test LBA Unit',
+          unit: 'Test LBA Name',
+          lba_name: 'Test LBA Name',
           crop: 'Cashew',
           season: '2024',
           unit_head: 'John Doe',
@@ -368,6 +378,7 @@ export default function CreateStockCardPage() {
         // Create receipt data
         const receiptData = {
           lba_unit_id: lbaUnitId,
+          lba_name: selectedLBAUnit?.lba_name || 'Test LBA Name',
           date: dateStr,
           whr_number: whrNumber,
           description: description,
@@ -422,8 +433,8 @@ export default function CreateStockCardPage() {
     e.preventDefault();
 
     // Check if user has entered a name for LBA
-    if (!lbaUnitDisplay.trim() && !unitFields.unit_name.trim()) {
-      await showAlert('Please enter a NAME OF LBA or fill in the unit information.');
+    if (!lbaUnitDisplay.trim() && !unitFields.unit.trim()) {
+      await showAlert(`Please enter an ${t('lbaUnit.lbaName')} or fill in the unit information.`);
       return;
     }
 
@@ -445,7 +456,8 @@ export default function CreateStockCardPage() {
       } else {
         // Create a new LBA unit with the typed/filled information
         const newUnitData = {
-          unit_name: unitFields.unit_name || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
+          unit: unitFields.unit || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
+          lba_name: unitFields.lba_name || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
           crop: unitFields.crop || '',
           season: unitFields.season || '',
           unit_head: unitFields.unit_head || '',
@@ -493,6 +505,7 @@ export default function CreateStockCardPage() {
 
       const receiptData = {
         lba_unit_id: lbaUnitId,
+        lba_name: unitFields.lba_name || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
         date: receiptDate,
         whr_number: receiptWHR,
         description: firstItem?.description || formData.description || 'Stock Card Entry',
@@ -527,8 +540,8 @@ export default function CreateStockCardPage() {
           item_order: index,
         }));
 
-      console.log('Creating receipt with data:', receiptData);
-      console.log('Receipt items:', receiptItems);
+      // console.log('Creating receipt with data:', receiptData);
+      // console.log('Receipt items:', receiptItems);
 
       const receiptId = await createReceipt(receiptData, receiptItems.length > 0 ? receiptItems : undefined);
 
@@ -542,7 +555,12 @@ export default function CreateStockCardPage() {
         }
       }
 
-      await showAlert('Stock Card created successfully!');
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list() });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated() });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.stats });
+      await queryClient.invalidateQueries({ queryKey: ['receipts', 'totals'] });
+
+      await showAlert(t('receipts.createSuccess'));
       router.push('/receipts');
     } catch (error) {
       console.error('Error creating stock card:', error);
@@ -551,7 +569,7 @@ export default function CreateStockCardPage() {
         stack: error instanceof Error ? error.stack : undefined,
       });
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await showAlert(`Error creating stock card: ${errorMessage}\n\nPlease check the browser console for more details.`);
+      await showAlert(`${t('receipts.createError')}: ${errorMessage}\n\nPlease check the browser console for more details.`);
     } finally {
       setSubmitting(false);
     }
@@ -567,13 +585,13 @@ export default function CreateStockCardPage() {
     <div className="max-w-[98%] mx-auto py-6" style={{ overflowY: 'visible' }}>
       <div className="py-6" style={{ overflowY: 'visible' }}>
         {/* Header */}
-        <div className="mb-6 text-center border-b-2 border-blue-600 pb-4">
-          <h1 className="text-sm font-semibold text-blue-600 mb-2">IBLE NUTS – CASHEW</h1>
+        {/* <div className="mb-6 text-center border-b-2 border-blue-600 pb-4">
+          <h1 className="text-sm font-semibold text-blue-600 mb-2">EDIBLE NUTS – CASHEW</h1>
           <h2 className="text-3xl font-bold text-blue-600 underline">LBA STOCK CARD</h2>
-        </div>
+        </div> */}
 
         {/* <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Create Stock Card</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{t('nav.createReceipt')}</h2>
           <div className="flex gap-2">
             <Button
               type="button"
@@ -584,61 +602,61 @@ export default function CreateStockCardPage() {
               disabled={fillingSampleData || submitting}
               title="Create 1000 sample receipts in the database"
             >
-              Fill Sample Data
+              {t('activityLog.fillSample')}
             </Button>
             <Button
               type="button"
               variant="primary"
               onClick={() => setShowUnitForm(!showUnitForm)}
             >
-              {showUnitForm ? 'Cancel' : '+ New LBA Unit'}
+              {showUnitForm ? t('common.cancel') : t('lbaUnit.newUnit')}
             </Button>
           </div>
         </div> */}
 
         {/* {showUnitForm && (
           <div className="mb-6 bg-white shadow rounded-lg p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Create New LBA Unit</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('lbaUnit.createUnit')}</h3>
             <form onSubmit={handleCreateUnit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Input
                   type="text"
-                  label="Unit Name"
+                  label={t('lbaUnit.unitName')}
                   required
-                  value={unitFormData.unit_name}
-                  onChange={(e) => setUnitFormData({ ...unitFormData, unit_name: e.target.value })}
+                  value={unitFormData.unit}
+                  onChange={(e) => setUnitFormData({ ...unitFormData, unit: e.target.value })}
                 />
                 <Input
                   type="text"
-                  label="LBA Code"
+                  label={t('lbaUnit.lbaCode')}
                   required
                   value={unitFormData.lba_code}
                   onChange={(e) => setUnitFormData({ ...unitFormData, lba_code: e.target.value })}
                 />
                 <Input
                   type="text"
-                  label="Crop"
+                  label={t('lbaUnit.crop')}
                   required
                   value={unitFormData.crop}
                   onChange={(e) => setUnitFormData({ ...unitFormData, crop: e.target.value })}
                 />
                 <Input
                   type="text"
-                  label="Season"
+                  label={t('lbaUnit.season')}
                   required
                   value={unitFormData.season}
                   onChange={(e) => setUnitFormData({ ...unitFormData, season: e.target.value })}
                 />
                 <Input
                   type="text"
-                  label="Unit Head"
+                  label={t('lbaUnit.unitHead')}
                   required
                   value={unitFormData.unit_head}
                   onChange={(e) => setUnitFormData({ ...unitFormData, unit_head: e.target.value })}
                 />
                 <Input
                   type="text"
-                  label="QCI Name"
+                  label={t('lbaUnit.qciName')}
                   required
                   value={unitFormData.qci_name}
                   onChange={(e) => setUnitFormData({ ...unitFormData, qci_name: e.target.value })}
@@ -651,7 +669,7 @@ export default function CreateStockCardPage() {
                 isLoading={submitting}
                 disabled={submitting}
               >
-                Create Unit
+                {t('common.save')}
               </Button>
             </form>
           </div>
@@ -669,7 +687,7 @@ export default function CreateStockCardPage() {
               {/* Photo Area */}
               <div className="col-span-1">
                 <ImagePicker
-                  label={<span className="text-xl font-bold text-blue-600">PHOTO</span>}
+                  label={<span className="text-xl font-bold text-blue-600">{t('common.photo')}</span>}
                   value={photoPreview}
                   onChange={handlePhotoChange}
                   size="custom"
@@ -684,9 +702,9 @@ export default function CreateStockCardPage() {
 
               {/* Unit Information Fields */}
               <div className="col-span-2 space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">NAME OF LBA:</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('lbaUnit.lbaName')}:</label>
                     <AutocompleteInput<LBAUnit>
                       value={lbaUnitDisplay}
                       onChange={(value) => {
@@ -695,7 +713,8 @@ export default function CreateStockCardPage() {
                           setSelectedLBAUnit(null);
                           setFormData(prev => ({ ...prev, lba_unit_id: '' }));
                           setUnitFields({
-                            unit_name: '',
+                            unit: '',
+                            lba_name: '',
                             crop: '',
                             season: '',
                             unit_head: '',
@@ -703,48 +722,60 @@ export default function CreateStockCardPage() {
                             lba_code: '',
                           });
                         } else if (!selectedLBAUnit) {
-                          // If user is typing but hasn't selected, update unit_name field
-                          setUnitFields(prev => ({ ...prev, unit_name: value }));
+                          // If user is typing but hasn't selected, update unit field
+                          setUnitFields(prev => ({ ...prev, unit: value, lba_name: value }));
                         }
                       }}
                       onSelect={handleLBAUnitSelect}
                       fetchSuggestions={searchLBAUnits}
                       getDisplayValue={getLBAUnitDisplay}
-                      placeholder="Type to search or enter manually..."
+                      placeholder={t('lbaUnit.placeholder')}
                       className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
                     <Input
                       type="text"
-                      label="CROP:"
+                      label={t('lbaUnit.crop').toUpperCase() + ':'}
                       value={unitFields.crop}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, crop: e.target.value }))}
                     />
                   </div>
-                  <div>
-                    <Input
-                      type="text"
-                      label="SEASON:"
-                      value={unitFields.season}
-                      onChange={(e) => setUnitFields(prev => ({ ...prev, season: e.target.value }))}
-                    />
-                  </div>
+
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <Input
                       type="text"
-                      label="UNIT:"
-                      value={unitFields.unit_name}
-                      onChange={(e) => setUnitFields(prev => ({ ...prev, unit_name: e.target.value }))}
+                      label={t('lbaUnit.season').toUpperCase() + ':'}
+                      value={unitFields.season}
+                      onChange={(e) => setUnitFields(prev => ({ ...prev, season: e.target.value }))}
                     />
-                    <input type="hidden" value={formData.lba_unit_id} />
                   </div>
                   <div>
                     <Input
                       type="text"
-                      label="QCI NAME:"
+                      label={t('lbaUnit.unit').toUpperCase() + ':'}
+                      value={unitFields.unit}
+                      onChange={(e) => setUnitFields(prev => ({ ...prev, unit: e.target.value }))}
+                    />
+                    <input type="hidden" value={formData.lba_unit_id} />
+                  </div>
+
+                  <div>
+                    <Input
+                      type="text"
+                      label={t('lbaUnit.unitHead').toUpperCase() + ':'}
+                      value={unitFields.unit_head}
+                      onChange={(e) => setUnitFields(prev => ({ ...prev, unit_head: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Input
+                      type="text"
+                      label={t('lbaUnit.qciName').toUpperCase() + ':'}
                       value={unitFields.qci_name}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, qci_name: e.target.value }))}
                     />
@@ -752,17 +783,7 @@ export default function CreateStockCardPage() {
                   <div>
                     <Input
                       type="text"
-                      label="UNIT HEAD:"
-                      value={unitFields.unit_head}
-                      onChange={(e) => setUnitFields(prev => ({ ...prev, unit_head: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Input
-                      type="text"
-                      label="LBA Code:"
+                      label={t('lbaUnit.lbaCode').toUpperCase() + ':'}
                       value={unitFields.lba_code}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, lba_code: e.target.value }))}
                     />
@@ -774,35 +795,39 @@ export default function CreateStockCardPage() {
             {/* Stock Card Table */}
             <div className="w-full">
               <div className="mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Activity Log</h3>
+                <h3 className="text-lg font-medium text-gray-900">{t('activityLog.title')}</h3>
               </div>
               <div className="w-full mb-6" style={{ overflowX: 'auto', overflowY: 'clip', maxHeight: 'none', height: 'auto', paddingBottom: '12px' }}>
                 <table className="w-full border-2 border-blue-600 table-fixed" style={{ height: 'auto', display: 'table', marginBottom: '0', minWidth: '1000px' }}>
                   <thead>
                     <tr className="bg-blue-50">
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[3%]">S.Nº</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[7%]">DATE</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[6%]">WHR Nº</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[20%]">DESCRIPTION OF ACTIVITY</th>
-                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">CREDIT</th>
-                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">DEBIT</th>
-                      <th colSpan={4} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[23%]">WEIGHT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[6%]">BALANCE<br />(GH¢)</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[7%]">ACTION</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[3%]">{t('activityLog.sn')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{t('activityLog.date')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[6%]">{t('activityLog.whrNo')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[20%]">{t('activityLog.description')}</th>
+                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">{t('activityLog.credit')}</th>
+                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">{t('activityLog.debit')}</th>
+                      <th colSpan={4} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[23%]">{t('activityLog.weight')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[6%]">
+                        {t('activityLog.balance').includes('(') ? t('activityLog.balance').split(' (')[0] : t('activityLog.balance')}
+                        <br />
+                        ({t('activityLog.balance').includes('(') ? t('activityLog.balance').split('(')[1] : 'GH¢)'}
+                      </th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{t('activityLog.action')}</th>
                     </tr>
                     <tr className="bg-blue-50">
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CREDIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM. CREDIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">DEBIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM. DEBIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">MTS</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM.MTS</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">BAGS</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM. BAGS</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.credit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumCredit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.debit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumDebit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.mts')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumMts')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.bags')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumBags')}</th>
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
                     </tr>
@@ -842,7 +867,7 @@ export default function CreateStockCardPage() {
                               type="date"
                               value={item.date}
                               onChange={(e) => updateItem(index, 'date', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 rounded-none"
+                              className="w-full h-full min-h-full text-[10px] p-1 text-center border-0 focus:ring-0 rounded-none"
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
@@ -852,14 +877,14 @@ export default function CreateStockCardPage() {
                               fetchSuggestions={searchWHRNumbers}
                               getDisplayValue={(item) => item}
                               placeholder=""
-                              className="block w-full h-full min-h-full text-[10px] border-0 focus:ring-0 rounded-none"
+                              className="block w-full h-full min-h-full text-[10px] text-center border-0 focus:ring-0 rounded-none"
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Textarea
                               value={item.description}
                               onChange={(e) => updateItem(index, 'description', e.target.value)}
-                              placeholder="Enter description..."
+                              placeholder={t('activityLog.enterDescription')}
                               rows={2}
                               className="w-full h-full min-h-full text-[10px] border-0 focus:ring-0 focus:outline-none resize-none px-1 py-1 bg-transparent rounded-none"
                               style={{ overflow: 'hidden' }}
@@ -867,52 +892,71 @@ export default function CreateStockCardPage() {
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="decimal"
                               value={item.credit_amount}
-                              onChange={(e) => updateItem(index, 'credit_amount', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                if (val.split('.').length <= 2) {
+                                  updateItem(index, 'credit_amount', val);
+                                }
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumCredit.toFixed(2)}
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="decimal"
                               value={item.debit_amount}
-                              onChange={(e) => updateItem(index, 'debit_amount', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                if (val.split('.').length <= 2) {
+                                  updateItem(index, 'debit_amount', val);
+                                }
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumDebit.toFixed(2)}
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="decimal"
                               value={item.mts}
-                              onChange={(e) => updateItem(index, 'mts', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                if (val.split('.').length <= 2) {
+                                  updateItem(index, 'mts', val);
+                                }
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumMts.toFixed(2)}
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
+                              type="text"
+                              inputMode="numeric"
                               value={item.bags}
-                              onChange={(e) => updateItem(index, 'bags', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9]/g, '');
+                                updateItem(index, 'bags', val);
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumBags.toString()}
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1 font-semibold">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
                             {item.balance_ghc}
                           </td>
                           <td className="border border-blue-600 px-0.5 py-1">
@@ -922,7 +966,7 @@ export default function CreateStockCardPage() {
                                 variant="success"
                                 size="sm"
                                 onClick={addItem}
-                                title="Add row below"
+                                title={t('activityLog.addRow')}
                                 className="px-2 py-1 text-xs"
                               >
                                 +
@@ -933,7 +977,7 @@ export default function CreateStockCardPage() {
                                   variant="danger"
                                   size="sm"
                                   onClick={() => removeItem(index)}
-                                  title="Remove row"
+                                  title={t('activityLog.removeRow')}
                                   className="px-2 py-1 text-xs"
                                 >
                                   ×
@@ -1023,7 +1067,7 @@ export default function CreateStockCardPage() {
                 variant="outline"
                 onClick={() => router.back()}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 type="submit"
@@ -1031,7 +1075,7 @@ export default function CreateStockCardPage() {
                 isLoading={submitting}
                 disabled={submitting}
               >
-                Create Stock Card
+                {t('nav.createReceipt')}
               </Button>
             </div>
           </div>

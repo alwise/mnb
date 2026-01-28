@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { generatePasswordResetToken, getAllUserEmails } from '@/lib/auth';
 import { Input, Button, useDialog } from '@/components/ui';
+import { useTexts } from '@/hooks/useTexts';
 import { Copy, Check } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const { t } = useTexts();
   const { showAlert } = useDialog();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -37,19 +39,19 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
 
     if (!email) {
-      await showAlert('Please enter your email address.');
+      await showAlert(t('forgotPassword.emailRequired', 'Please enter your email address.'));
       return;
     }
 
     try {
       setLoading(true);
       const token = await generatePasswordResetToken(email);
-      setResetToken(token);
-      await showAlert('Password reset token generated successfully! Copy the token below and use it to reset your password.');
+      setResetToken((token ?? '').trim());
+      await showAlert(t('forgotPassword.tokenGenerated', 'Password reset token generated successfully! Copy the token below and use it to reset your password.'));
     } catch (error) {
       console.error('Error generating reset token:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await showAlert(`Error: ${errorMessage}`);
+      await showAlert(`${t('forgotPassword.generateError', 'Error generating reset token')}: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -73,16 +75,16 @@ export default function ForgotPasswordPage() {
         <div className="max-w-md w-full bg-white shadow-xl rounded-2xl p-6 md:p-8 border border-gray-200">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-2 text-center">
-              Reset Token Generated
+              {t('forgotPassword.tokenGeneratedTitle', 'Reset Token Generated')}
             </h1>
             <p className="text-sm text-gray-600 text-center">
-              Copy this token and use it to reset your password
+              {t('forgotPassword.copyTokenHint', 'Copy this token and use it to reset your password')}
             </p>
           </div>
 
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-900 mb-2">
-              Reset Token
+              {t('forgotPassword.resetToken', 'Reset Token')}
             </label>
             <div className="relative">
               <input
@@ -110,11 +112,11 @@ export default function ForgotPasswordPage() {
 
           <div className="space-y-4">
             <Button
-              onClick={() => router.push(`/reset-password?token=${resetToken}`)}
+              onClick={() => router.push(`/reset-password?token=${encodeURIComponent(resetToken)}`)}
               variant="primary"
               fullWidth
             >
-              Continue to Reset Password
+              {t('forgotPassword.continueToReset', 'Continue to Reset Password')}
             </Button>
             <Button
               onClick={() => {
@@ -124,13 +126,13 @@ export default function ForgotPasswordPage() {
               variant="outline"
               fullWidth
             >
-              Generate New Token
+              {t('forgotPassword.generateNew', 'Generate New Token')}
             </Button>
           </div>
 
           <div className="mt-6 pt-4 border-t border-gray-200 text-center">
             <Link href="/login" className="text-sm text-blue-600 hover:text-blue-700 font-semibold transition-colors">
-              Back to Login
+              {t('forgotPassword.backToLogin', 'Back to Login')}
             </Link>
           </div>
         </div>
@@ -143,10 +145,10 @@ export default function ForgotPasswordPage() {
       <div className="max-w-md w-full bg-white shadow-xl rounded-2xl p-6 md:p-8 border border-gray-200">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2 text-center">
-            Forgot Password
+            {t('forgotPassword.title', 'Forgot Password')}
           </h1>
           <p className="text-sm text-gray-600 text-center">
-            Enter your email to receive a password reset token
+            {t('forgotPassword.desc', 'Enter your email to receive a password reset token')}
           </p>
         </div>
 
@@ -154,14 +156,14 @@ export default function ForgotPasswordPage() {
           {availableEmails.length > 1 && (
             <div className="mb-2">
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                Select Account ({availableEmails.length} accounts found)
+                {t('forgotPassword.selectAccount', 'Select Account')} ({availableEmails.length} {t('forgotPassword.accountsFound', 'accounts found')})
               </label>
               <select
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2.5 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               >
-                <option value="">Select an email...</option>
+                <option value="">{t('forgotPassword.selectEmail', 'Select an email...')}</option>
                 {availableEmails.map((emailOption) => (
                   <option key={emailOption} value={emailOption}>
                     {emailOption}
@@ -172,16 +174,16 @@ export default function ForgotPasswordPage() {
           )}
           <Input
             type="email"
-            label="Email"
+            label={t('auth.email', 'Email')}
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter your email address"
+            placeholder={t('forgotPassword.enterEmailPlaceholder', 'Enter your email address')}
             disabled={availableEmails.length === 1}
           />
           {availableEmails.length === 1 && (
             <p className="text-xs text-gray-500 -mt-2">
-              Auto-filled from existing account
+              {t('forgotPassword.autoFilledHint', 'Auto-filled from existing account')}
             </p>
           )}
 
@@ -192,13 +194,13 @@ export default function ForgotPasswordPage() {
             isLoading={loading}
             disabled={loading}
           >
-            Generate Reset Token
+            {t('forgotPassword.generateButton', 'Generate Reset Token')}
           </Button>
         </form>
 
         <div className="mt-6 pt-4 border-t border-gray-200 text-center">
           <Link href="/login" className="text-sm text-blue-600 hover:text-blue-700 font-semibold transition-colors">
-            Back to Login
+            {t('forgotPassword.backToLogin', 'Back to Login')}
           </Link>
         </div>
       </div>

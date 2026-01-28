@@ -1,6 +1,7 @@
 export interface LBAUnit {
   id?: number;
-  unit_name: string;
+  unit: string;
+  lba_name: string;
   crop: string;
   season: string;
   unit_head: string;
@@ -12,6 +13,7 @@ export interface LBAUnit {
 export interface Receipt {
   id?: number;
   lba_unit_id: number;
+  lba_name?: string;
   date: string;
   whr_number: string;
   description: string;
@@ -49,8 +51,9 @@ export interface ReceiptTotals {
 }
 
 export interface ReceiptWithUnit extends Receipt {
-  unit_name?: string;
+  unit?: string;
   lba_code?: string;
+  lba_name?: string;
   crop?: string;
   season?: string;
   unit_head?: string;
@@ -60,7 +63,8 @@ export interface ReceiptWithUnit extends Receipt {
 
 export interface ReceiptGroupedByLBA {
   lba_unit_id: number;
-  unit_name: string;
+  unit: string;
+  lba_name: string;
   lba_code: string;
   crop?: string;
   season?: string;

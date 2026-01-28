@@ -7,10 +7,12 @@ import Link from 'next/link';
 import { signup, setCurrentUser } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input, Button, FileInput, useDialog } from '@/components/ui';
+import { useTexts } from '@/hooks/useTexts';
 
 export default function SignupPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const router = useRouter();
+  const { t } = useTexts();
   const { showAlert } = useDialog();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -54,22 +56,22 @@ export default function SignupPage() {
     e.preventDefault();
 
     if (!formData.email || !formData.password || !formData.fullName) {
-      await showAlert('Please fill in all required fields.');
+      await showAlert(t('signup.fillAllRequired', 'Please fill in all required fields.'));
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      await showAlert('Passwords do not match.');
+      await showAlert(t('signup.passwordsDoNotMatch', 'Passwords do not match.'));
       return;
     }
 
     if (formData.password.length < 6) {
-      await showAlert('Password must be at least 6 characters long.');
+      await showAlert(t('signup.passwordTooShort', 'Password must be at least 6 characters long.'));
       return;
     }
 
     if (!signatureFile) {
-      await showAlert('Please upload your signature. This is required for creating stock cards.');
+      await showAlert(t('signup.signatureRequired', 'Please upload your signature. This is required for creating stock cards.'));
       return;
     }
 
@@ -82,12 +84,13 @@ export default function SignupPage() {
         signatureFile
       );
       setCurrentUser(userId);
-      await showAlert('Account created successfully! Redirecting to dashboard...');
+      await refreshUser();
+      await showAlert(t('signup.signupSuccess', 'Account created successfully! Redirecting to dashboard...'));
       router.push('/dashboard');
     } catch (error) {
       console.error('Signup error:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await showAlert(`Error creating account: ${errorMessage}`);
+      await showAlert(`${t('signup.signupError', 'Error creating account')}: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -98,17 +101,17 @@ export default function SignupPage() {
       <div className="max-w-md w-full bg-white shadow-xl rounded-2xl p-6 md:p-8 border border-gray-200">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-1 text-center">
-            Create Account
+            {t('signup.createAccountTitle', 'Create Account')}
           </h1>
           <p className="text-xs text-gray-600 text-center">
-            Sign up to get started
+            {t('signup.signupDesc', 'Sign up to get started')}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             type="text"
-            label="Full Name"
+            label={t('signup.fullName', 'Full Name')}
             required
             value={formData.fullName}
             onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
@@ -116,7 +119,7 @@ export default function SignupPage() {
 
           <Input
             type="email"
-            label="Email"
+            label={t('auth.email', 'Email')}
             required
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -124,7 +127,7 @@ export default function SignupPage() {
 
           <Input
             type="password"
-            label="Password"
+            label={t('auth.password', 'Password')}
             required
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -132,7 +135,7 @@ export default function SignupPage() {
 
           <Input
             type="password"
-            label="Confirm Password"
+            label={t('signup.confirmPassword', 'Confirm Password')}
             required
             value={formData.confirmPassword}
             onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
@@ -151,8 +154,8 @@ export default function SignupPage() {
             )}
             <FileInput
               accept="image/*"
-              label="Signature"
-              helperText="Required for creating stock cards"
+              label={t('signup.signature', 'Signature')}
+              helperText={t('signup.signatureHint', 'Required for creating stock cards')}
               onChange={handleSignatureChange}
               required
             />
@@ -165,15 +168,15 @@ export default function SignupPage() {
             isLoading={loading}
             disabled={loading}
           >
-            Create Account
+            {t('signup.createAccountTitle', 'Create Account')}
           </Button>
         </form>
 
         <div className="mt-6 pt-4 border-t border-gray-200 text-center">
           <p className="text-sm text-gray-600">
-            Already have an account?{' '}
+            {t('signup.alreadyHaveAccount', 'Already have an account?')}{' '}
             <Link href="/login" className="text-blue-600 hover:text-blue-700 font-semibold transition-colors">
-              Sign in
+              {t('signup.signIn', 'Sign in')}
             </Link>
           </p>
         </div>

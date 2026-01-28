@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "MAN NO BE GOD COMPANY LIMITED",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.mnb.receiptmanager",
   "build": {
     "frontendDist": "../out",
@@ -27,12 +27,9 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "publisher": "Alwise Studio",
-    "targets": [
-      "msi",
-      "nsis",
-      "dmg"
-    ],
+    "targets": ["msi", "nsis", "dmg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

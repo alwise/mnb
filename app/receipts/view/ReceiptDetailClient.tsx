@@ -12,6 +12,9 @@ import { getUserSignatureDataUrl } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
 import { isTauri } from '@/lib/utils';
 import type { ReceiptWithUnit, ReceiptItem } from '@/types';
+import { useTexts } from '@/hooks/useTexts';
+import { useQueryClient } from '@tanstack/react-query';
+import { QUERY_KEYS } from '@/lib/queryKeys';
 
 interface ParsedReceiptItem extends ReceiptItem {
   serial_number: string;
@@ -24,6 +27,8 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
   const router = useRouter();
   const { showAlert, showConfirm } = useDialog();
   const { user } = useAuth();
+  const { t } = useTexts();
+  const queryClient = useQueryClient();
   const [receipt, setReceipt] = useState<ReceiptWithUnit | null>(null);
   const [totals, setTotals] = useState({
     cumulative_credit: 0,
@@ -41,8 +46,14 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
   const [availablePrinters, setAvailablePrinters] = useState<any[]>([]);
   const [hasPrinters, setHasPrinters] = useState(false);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
-  const [companyName, setCompanyName] = useState<string>('MAN NO BE GOD COMPANY LIMITED');
-  const [receiptHeaderText, setReceiptHeaderText] = useState<string>('MAN NO BE GOD COMPANY LIMITED');
+  const [companyDetails, setCompanyDetails] = useState({
+    name: 'MAN NO BE GOD COMPANY LIMITED',
+    headerText: 'MAN NO BE GOD COMPANY LIMITED',
+    address: '',
+    phone: '',
+    email: '',
+    website: '',
+  });
 
   // Parse receipt item description to extract serial number, date, WHR number
   function parseReceiptItem(item: ReceiptItem, index: number, receiptDate: string, receiptWHR: string): ParsedReceiptItem {
@@ -92,7 +103,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
       ]);
 
       if (!receiptData) {
-        await showAlert('Stock card not found');
+        await showAlert(t('receipts.stockCardNotFound'));
         router.push('/receipts');
         return;
       }
@@ -102,8 +113,14 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
 
       // Set company settings
       if (companySettings) {
-        setCompanyName(companySettings.company_name);
-        setReceiptHeaderText(companySettings.receipt_header_text);
+        setCompanyDetails({
+          name: companySettings.company_name,
+          headerText: companySettings.receipt_header_text,
+          address: companySettings.address || '',
+          phone: companySettings.phone || '',
+          email: companySettings.email || '',
+          website: companySettings.website || '',
+        });
       }
       if (logo) {
         setCompanyLogo(logo);
@@ -149,7 +166,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
       }
     } catch (error) {
       console.error('Error loading receipt:', error);
-      await showAlert('Error loading stock card. Make sure you are running in Tauri environment.');
+      await showAlert(t('receipts.loadError'));
     } finally {
       setLoading(false);
     }
@@ -186,7 +203,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
   }, []);
 
   async function handleDelete() {
-    const confirmed = await showConfirm('Are you sure you want to delete this stock card? This action cannot be undone.');
+    const confirmed = await showConfirm(t('receipts.deleteConfirm', 'Are you sure you want to delete this stock card? This action cannot be undone.'));
     if (!confirmed) {
       return;
     }
@@ -194,11 +211,13 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
     try {
       setDeleting(true);
       await deleteReceipt(receiptId);
-      await showAlert('Stock card deleted successfully');
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list() });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated() });
+      await showAlert(t('receipts.deleteSuccess'));
       router.push('/receipts');
     } catch (error) {
       console.error('Error deleting receipt:', error);
-      await showAlert('Error deleting stock card');
+      await showAlert(t('receipts.deleteError'));
     } finally {
       setDeleting(false);
     }
@@ -220,7 +239,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
 
       const receiptContent = document.getElementById('receipt-content');
       if (!receiptContent) {
-        await showAlert('Stock card content not found');
+        await showAlert(t('receipts.stockCardNotFound'));
         return;
       }
 
@@ -277,7 +296,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
           const pdfBlob = pdf.output('arraybuffer');
           // filePath from save dialog is an absolute path, so no baseDir needed
           await writeFile(filePath, new Uint8Array(pdfBlob));
-          await showAlert('PDF exported successfully!');
+          await showAlert(t('receipts.pdfExportSuccess'));
         }
       } else {
         // Fallback for browser: download directly
@@ -285,7 +304,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
       }
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      await showAlert('Error exporting PDF. Please try again.');
+      await showAlert(t('receipts.pdfExportError'));
     } finally {
       setExporting(false);
     }
@@ -305,7 +324,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
 
       const receiptContent = document.getElementById('receipt-content');
       if (!receiptContent) {
-        await showAlert('Stock card content not found');
+        await showAlert(t('receipts.stockCardNotFound'));
         return;
       }
 
@@ -387,10 +406,10 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
         console.log('Could not clean up temp file:', cleanupError);
       }
 
-      await showAlert('Stock card sent to printer successfully!');
+      await showAlert(t('receipts.printSuccess'));
     } catch (error) {
       console.error('Error printing directly:', error);
-      await showAlert('Error printing directly. Please try exporting as PDF instead.');
+      await showAlert(t('receipts.printError'));
     } finally {
       setPrinting(false);
     }
@@ -401,7 +420,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
       if (hasPrinters && availablePrinters.length > 0) {
         await handleDirectPrint();
       } else {
-        await showAlert('No printer available. Please export as PDF instead.');
+        await showAlert(t('receipts.printerNotFound'));
       }
     } else {
       handlePrint();
@@ -421,7 +440,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="text-center py-12">
-            <p className="text-gray-600">Loading receipt...</p>
+            <p className="text-gray-600">{t('common.loading')}</p>
           </div>
         </div>
       </div>
@@ -480,7 +499,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                   className="flex items-center gap-2"
                 >
                   <Printer className="h-5 w-5" />
-                  Print
+                  {t('receipts.print')}
                 </Button>
               )}
               {/* Export PDF Button */}
@@ -492,13 +511,13 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                 className="flex items-center gap-2"
               >
                 <DownloadCloud className="h-5 w-5" />
-                Download PDF
+                {t('receipts.downloadPdf')}
               </Button>
               <Button
                 onClick={() => router.push(`/receipts/edit?id=${receipt.id}`)}
                 variant="success"
               >
-                Edit
+                {t('common.edit')}
               </Button>
               <Button
                 onClick={handleDelete}
@@ -506,7 +525,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                 isLoading={deleting}
                 disabled={deleting}
               >
-                Delete
+                {t('common.delete')}
               </Button>
             </div>
           </div>
@@ -530,26 +549,36 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
               {/* Company Name - Light Blue */}
               <div className="text-center mb-3 print:mb-2">
                 <h1 className="text-6xl print:text-2xl font-bold uppercase text-blue-600 print:text-blue-600 leading-tight">
-                  {receiptHeaderText.split('\n').map((line, i) => (
+                  {companyDetails.headerText.split('\n').map((line, i) => (
                     <span key={i}>
                       {line}
-                      {i < receiptHeaderText.split('\n').length - 1 && <br />}
+                      {i < companyDetails.headerText.split('\n').length - 1 && <br />}
                     </span>
                   ))}
                 </h1>
               </div>
 
+              {/* Company Details (Address, Phone, etc) */}
+              <div className="text-center mb-4 print:mb-3 text-blue-600 print:text-blue-600 text-sm print:text-xs">
+                {companyDetails.address && <p>{companyDetails.address}</p>}
+                <div className="flex justify-center gap-4 flex-wrap">
+                  {companyDetails.phone && <span>Tel: {companyDetails.phone}</span>}
+                  {companyDetails.email && <span>Email: {companyDetails.email}</span>}
+                  {companyDetails.website && <span>Website: {companyDetails.website}</span>}
+                </div>
+              </div>
+
               {/* LBA STOCK SHEET - Light Blue */}
               <div className="text-center mb-3 print:mb-2">
                 <h2 className="text-6xl print:text-2xl font-bold uppercase text-blue-600 print:text-blue-600">
-                  LBA STOCK SHEET
+                  {t('receipts.lbaStockSheet')}
                 </h2>
               </div>
 
               {/* EDIBLE NUTS – CASHEW - Light Blue Underlined */}
               <div className="text-center mb-4 print:mb-3">
                 <p className="text-xl print:text-base font-semibold text-blue-600 print:text-blue-600 underline">
-                  EDIBLE NUTS – CASHEW
+                  {t('receipts.edibleNutsCashew')}
                 </p>
               </div>
 
@@ -577,7 +606,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                 {/* Photo Area */}
                 <div className="col-span-1">
                   <label className="block text-sm print:text-xs font-bold text-blue-600 mb-1 text-center">
-                    PHOTO
+                    {t('common.photo')}
                   </label>
                   <div className="border-2 border-dashed border-blue-600 p-2 print:p-1 h-64 print:h-32 flex items-center justify-center relative overflow-hidden bg-white">
                     {receiptPhoto ? (
@@ -589,7 +618,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                       />
                     ) : (
                       <div className="text-center text-gray-400 text-xs">
-                        <p>No photo</p>
+                        <p>{t('receipts.noPhoto')}</p>
                       </div>
                     )}
                   </div>
@@ -598,37 +627,39 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                   {/* Stock Card Header */}
                   <div className="mb-4 print:mb-3 text-center">
                     <h3 className="text-4xl print:text-lg font-bold uppercase text-blue-600 print:text-blue-600 mb-1">
-                      MAN NO BE GOD COMPANY LIMITED
+                      {t('nav.companyName')}
                     </h3>
                     <h4 className="text-4xl print:text-lg font-bold uppercase text-blue-600 print:text-blue-600 underline">
-                      LBA STOCK CARD
+                      {t('receipts.lbaStockCard')}
                     </h4>
                   </div>
                   {/* Unit Information Fields */}
                   <div className="space-y-4 print:space-y-1">
                     <div className="grid grid-cols-2 gap-6 print:gap-1">
                       <div className="flex items-end">
-                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">UNIT:</span>
+                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">
+                          {t('lbaUnit.unit').toUpperCase()}:
+                        </span>
                         <span className="flex-1 border-b-2 border-dotted border-gray-900 pb-0.5 min-h-[18px] text-xs print:text-[10px] font-normal">
-                          {receipt.unit_name || ''}
+                          {receipt.unit || ''}
                         </span>
                       </div>
                       <div className="flex items-end">
-                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">NAME OF LBA:</span>
+                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">{t('lbaUnit.lbaName')}:</span>
                         <span className="flex-1 border-b-2 border-dotted border-gray-900 pb-0.5 min-h-[18px] text-xs print:text-[10px] font-normal">
-                          {receipt.unit_name || ''}
+                          {receipt.lba_name || ''}
                         </span>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-6 print:gap-1">
                       <div className="flex items-end">
-                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">UNIT HEAD:</span>
+                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">{t('lbaUnit.unitHead').toUpperCase()}:</span>
                         <span className="flex-1 border-b-2 border-dotted border-gray-900 pb-0.5 min-h-[18px] text-xs print:text-[10px] font-normal">
                           {receipt.unit_head || ''}
                         </span>
                       </div>
                       <div className="flex items-end">
-                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">CROP:</span>
+                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">{t('lbaUnit.crop').toUpperCase()}:</span>
                         <span className="flex-1 border-b-2 border-dotted border-gray-900 pb-0.5 min-h-[18px] text-xs print:text-[10px] font-normal">
                           {receipt.crop || ''}
                         </span>
@@ -636,13 +667,13 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                     </div>
                     <div className="grid grid-cols-2 gap-6 print:gap-1">
                       <div className="flex items-end">
-                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">QCI NAME:</span>
+                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">{t('lbaUnit.qciName').toUpperCase()}:</span>
                         <span className="flex-1 border-b-2 border-dotted border-gray-900 pb-0.5 min-h-[18px] text-xs print:text-[10px] font-normal">
                           {receipt.qci_name || ''}
                         </span>
                       </div>
                       <div className="flex items-end">
-                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">SEASON:</span>
+                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">{t('lbaUnit.season').toUpperCase()}:</span>
                         <span className="flex-1 border-b-2 border-dotted border-gray-900 pb-0.5 min-h-[18px] text-xs print:text-[10px] font-normal">
                           {receipt.season || ''}
                         </span>
@@ -650,7 +681,7 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                     </div>
                     <div className="grid grid-cols-2 gap-6 print:gap-1">
                       <div className="flex items-end">
-                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">LBA Code:</span>
+                        <span className="text-xs print:text-[10px] font-bold text-gray-900 mr-1">{t('lbaUnit.lbaCode').toUpperCase()}:</span>
                         <span className="flex-1 border-b-2 border-dotted border-gray-900 pb-0.5 min-h-[18px] text-xs print:text-[10px] font-normal">
                           {receipt.lba_code || ''}
                         </span>
@@ -666,29 +697,37 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                   <table className="w-full border-2 border-blue-600">
                     <thead>
                       <tr className="bg-blue-50">
-                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[4%]">S.Nº</th>
-                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[6%]">DATE</th>
-                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[6%]">WHR Nº</th>
-                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[20%]">DESCRIPTION OF ACTIVITY</th>
-                        <th colSpan={2} className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[12%]">CREDIT</th>
-                        <th colSpan={2} className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[12%]">DEBIT</th>
-                        <th colSpan={4} className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[24%]">WEIGHT</th>
-                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[6%]">BALANCE<br />(GH¢)</th>
-                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[6%]">SIGNATURE<br />(LBA)</th>
+                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[4%]">{t('activityLog.sn')}</th>
+                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[6%]">{t('activityLog.date')}</th>
+                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[6%]">{t('activityLog.whrNo')}</th>
+                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 w-[20%]">{t('activityLog.description')}</th>
+                        <th colSpan={2} className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[12%]">{t('activityLog.credit')}</th>
+                        <th colSpan={2} className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[12%]">{t('activityLog.debit')}</th>
+                        <th colSpan={4} className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[24%]">{t('activityLog.weight')}</th>
+                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[6%]">
+                          {t('activityLog.balance').includes('(') ? t('activityLog.balance').split(' (')[0] : t('activityLog.balance')}
+                          <br />
+                          ({t('activityLog.balance').includes('(') ? t('activityLog.balance').split('(')[1] : 'GH¢)'}
+                        </th>
+                        <th className="border border-blue-600 px-2 py-2 text-xs font-bold text-blue-600 text-center w-[6%]">
+                          {t('receipts.lbaSignature').includes(' ') ? t('receipts.lbaSignature').split(' ')[0] : t('receipts.lbaSignature')}
+                          <br />
+                          ({t('receipts.lbaSignature').includes(' ') ? t('receipts.lbaSignature').split(' ')[1] : 'Signature'})
+                        </th>
                       </tr>
                       <tr className="bg-blue-50">
                         <th className="border border-blue-600"></th>
                         <th className="border border-blue-600"></th>
                         <th className="border border-blue-600"></th>
                         <th className="border border-blue-600"></th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">CREDIT</th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">CUM. CREDIT</th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">DEBIT</th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">CUM. DEBIT</th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">MTS</th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">CUM.MTS</th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">BAGS</th>
-                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">CUM. BAGS</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.credit')}</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.cumCredit')}</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.debit')}</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.cumDebit')}</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.mts')}</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.cumMts')}</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.bags')}</th>
+                        <th className="border border-blue-600 px-1 py-1 text-xs font-semibold text-blue-600">{t('activityLog.cumBags')}</th>
                         <th className="border border-blue-600"></th>
                         <th className="border border-blue-600"></th>
                       </tr>
@@ -766,8 +805,8 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
                           />
                         )}
                       </div>
-                      <p className="text-left text-xs print:text-[10px] font-bold text-gray-900 uppercase tracking-wide mt-1">User Signature</p>
-                      <p className="text-left text-xs print:text-[10px] text-gray-600 mt-0.5">Authorized Signatory</p>
+                      <p className="text-left text-xs print:text-[10px] font-bold text-gray-900 uppercase tracking-wide mt-1">{t('receipts.userSignature')}</p>
+                      <p className="text-left text-xs print:text-[10px] text-gray-600 mt-0.5">{t('receipts.authorizedSignatory')}</p>
                     </div>
                   </div>
                 </div>

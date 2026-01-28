@@ -7,6 +7,10 @@ export interface CompanySettings {
   company_name: string;
   company_logo_path: string | null;
   receipt_header_text: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
   updated_at: string;
 }
 
@@ -30,6 +34,10 @@ export async function updateCompanySettings(
     company_name?: string;
     company_logo_path?: string | null;
     receipt_header_text?: string;
+    address?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    website?: string | null;
   }
 ): Promise<void> {
   const db = await getDatabase();
@@ -48,6 +56,22 @@ export async function updateCompanySettings(
   if (updates.receipt_header_text !== undefined) {
     fields.push(`receipt_header_text = $${paramIndex++}`);
     values.push(updates.receipt_header_text);
+  }
+  if (updates.address !== undefined) {
+    fields.push(`address = $${paramIndex++}`);
+    values.push(updates.address);
+  }
+  if (updates.phone !== undefined) {
+    fields.push(`phone = $${paramIndex++}`);
+    values.push(updates.phone);
+  }
+  if (updates.email !== undefined) {
+    fields.push(`email = $${paramIndex++}`);
+    values.push(updates.email);
+  }
+  if (updates.website !== undefined) {
+    fields.push(`website = $${paramIndex++}`);
+    values.push(updates.website);
   }
 
   if (fields.length === 0) {

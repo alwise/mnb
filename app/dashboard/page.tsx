@@ -8,9 +8,11 @@ import StatsCard from '@/components/StatsCard';
 import { useDialog } from '@/components/ui';
 import { getDashboardStats, getAllReceipts } from '@/lib/receipts';
 import type { ReceiptWithUnit } from '@/types';
+import { useTexts } from '@/hooks/useTexts';
 
 function DashboardPageContent() {
   const router = useRouter();
+  const { t } = useTexts();
   const { showAlert } = useDialog();
   const [stats, setStats] = useState({
     totalCredit: 0,
@@ -38,7 +40,7 @@ function DashboardPageContent() {
       setRecentReceipts(receipts.slice(0, 10));
     } catch (error) {
       console.error('Error loading dashboard data:', error);
-      await showAlert('Error loading dashboard data. Make sure you are running in Tauri environment.');
+      await showAlert(t('dashboard.loadError', 'Error loading dashboard data. Make sure you are running in Tauri environment.'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +62,7 @@ function DashboardPageContent() {
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="text-center py-12">
-            <p className="text-gray-600">Loading dashboard...</p>
+            <p className="text-gray-600">{t('common.loading', 'Loading...')}</p>
           </div>
         </div>
       </div>
@@ -70,33 +72,33 @@ function DashboardPageContent() {
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('dashboard.title', 'Dashboard')}</h2>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 mb-8">
           <StatsCard
-            title="Total Credit"
+            title={t('dashboard.totalCredit', 'Total Credit')}
             value={formatCurrency(stats.totalCredit)}
           />
           <StatsCard
-            title="Total Debit"
+            title={t('dashboard.totalDebit', 'Total Debit')}
             value={formatCurrency(stats.totalDebit)}
           />
           <StatsCard
-            title="Total Balance"
+            title={t('dashboard.totalBalance', 'Total Balance')}
             value={formatCurrency(stats.totalBalance)}
           />
           <StatsCard
-            title="Total Weight"
+            title={t('dashboard.totalWeight', 'Total Weight')}
             value={formatNumber(stats.totalWeight)}
             subtitle="kg"
           />
           <StatsCard
-            title="Total Bags"
+            title={t('dashboard.totalBags', 'Total Bags')}
             value={formatNumber(stats.totalBags)}
           />
           <StatsCard
-            title="Total MTS"
+            title={t('dashboard.totalMTS', 'Total MTS')}
             value={formatNumber(stats.totalMTS)}
           />
         </div>
@@ -105,12 +107,12 @@ function DashboardPageContent() {
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
             <h3 className="text-lg leading-6 font-medium text-gray-900">
-              Recent Stock Cards
+              {t('dashboard.recentStockCards', 'Recent Stock Cards')}
             </h3>
           </div>
           {recentReceipts.length === 0 ? (
             <div className="px-4 py-5 sm:px-6 text-center text-gray-500">
-              No stock cards found. Create your first stock card to get started.
+              {t('dashboard.noStockCards', 'No stock cards found. Create your first stock card to get started.')}
             </div>
           ) : (
             <ul className="divide-y divide-gray-200">
@@ -126,7 +128,7 @@ function DashboardPageContent() {
                         {receipt.whr_number} - {receipt.description}
                       </p>
                       <p className="mt-1 text-sm text-gray-500">
-                        {receipt.unit_name} • {receipt.date}
+                        {receipt.lba_name} • {receipt.date}
                       </p>
                     </div>
                     <div className="ml-4 flex-shrink-0 text-right">

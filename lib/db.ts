@@ -1,8 +1,8 @@
-import Database from '@tauri-apps/plugin-sql';
-import { isTauri } from './utils';
+import Database from "@tauri-apps/plugin-sql";
+import { isTauri } from "./utils";
 
 let db: Database | null = null;
-const DB_NAME = 'lba_receipts.db';
+const DB_NAME = "lba_receipts.db";
 
 /**
  * Ensure database connection is in a clean state (no active transactions)
@@ -10,7 +10,7 @@ const DB_NAME = 'lba_receipts.db';
 async function ensureCleanState(db: Database): Promise<void> {
   try {
     // Try to rollback any lingering transaction
-    await db.execute('ROLLBACK');
+    await db.execute("ROLLBACK");
   } catch (e) {
     // Ignore - no transaction to rollback, which is fine
   }
@@ -18,15 +18,16 @@ async function ensureCleanState(db: Database): Promise<void> {
 
 export async function getDatabase(): Promise<Database> {
   if (db) {
-    // Ensure clean state before returning existing connection
-    await ensureCleanState(db);
+    // Do NOT run ensureCleanState(ROLLBACK) here - it would abort any
+    // in-progress transaction from another caller (e.g. updateReceipt),
+    // causing "database is locked" or failed updates.
     return db;
   }
 
   // Check if we're in Tauri environment first
   if (!isTauri()) {
     throw new Error(
-      'Database is only available in Tauri environment. Please run the app using "pnpm tauri dev" or build the desktop app.'
+      'Database is only available in Tauri environment. Please run the app using "pnpm tauri dev" or build the desktop app.',
     );
   }
 
@@ -40,7 +41,7 @@ export async function getDatabase(): Promise<Database> {
   } catch (error) {
     // Reset db reference on error so we can retry
     db = null;
-    console.error('Database load error:', error);
+    console.error("Database load error:", error);
     throw error;
   }
 }
@@ -51,31 +52,35 @@ export async function getDatabase(): Promise<Database> {
  */
 export async function deleteDatabase(): Promise<void> {
   if (!isTauri()) {
-    throw new Error('Database deletion is only available in Tauri environment');
+    throw new Error("Database deletion is only available in Tauri environment");
   }
 
   try {
     // Reset the database connection reference
-    // Note: Tauri SQL plugin manages connections internally, 
+    // Note: Tauri SQL plugin manages connections internally,
     // so we just reset our reference
     db = null;
 
     // Delete the database file using Tauri fs plugin
-    const { remove, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-    
+    const { remove, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+
     try {
       await remove(DB_NAME, { baseDir: BaseDirectory.AppData });
-      console.log('Database file deleted successfully');
+      console.log("Database file deleted successfully");
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       // If file doesn't exist, that's okay - it means it's already deleted
-      if (!errorMessage.includes('not found') && !errorMessage.includes('No such file')) {
+      if (
+        !errorMessage.includes("not found") &&
+        !errorMessage.includes("No such file")
+      ) {
         throw error;
       }
-      console.log('Database file already deleted or does not exist');
+      console.log("Database file already deleted or does not exist");
     }
   } catch (error) {
-    console.error('Error deleting database:', error);
+    console.error("Error deleting database:", error);
     throw error;
   }
 }
@@ -87,17 +92,67 @@ async function migrateDatabase(db: Database): Promise<void> {
     await db.execute(`
       ALTER TABLE receipts ADD COLUMN previous_balance REAL NOT NULL DEFAULT 0
     `);
-    console.log('Added previous_balance column to receipts table');
+    console.log("Added previous_balance column to receipts table");
   } catch (error) {
     // Column already exists or table doesn't exist yet - that's fine
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes('duplicate column') || errorMessage.includes('no such table')) {
+    if (
+      errorMessage.includes("duplicate column") ||
+      errorMessage.includes("no such table")
+    ) {
       // Expected - column already exists or table will be created
-      console.log('previous_balance column already exists or table will be created');
-    } else {
-      // Unexpected error - log it but don't fail
-      console.warn('Migration warning:', errorMessage);
+      console.log(
+        "previous_balance column already exists or table will be created",
+      );
     }
+  }
+
+  // Add lba_name column if it doesn't exist
+  try {
+    await db.execute(`
+      ALTER TABLE receipts ADD COLUMN lba_name TEXT
+    `);
+    console.log("Added lba_name column to receipts table");
+
+    // Backfill lba_name from lba_units
+    await db.execute(`
+      UPDATE receipts 
+      SET lba_name = (SELECT unit_name FROM lba_units WHERE lba_units.id = receipts.lba_unit_id)
+      WHERE lba_name IS NULL
+    `);
+    console.log("Backfilled lba_name from lba_units");
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (!errorMessage.includes("duplicate column")) {
+      console.warn("Migration warning for lba_name:", errorMessage);
+    }
+  }
+
+  // Rename unit_name to unit in lba_units and add lba_name if they don't exist
+  try {
+    // Check if unit exists
+    const tableInfo = await db.select<any[]>("PRAGMA table_info(lba_units)");
+    const hasUnit = tableInfo.some((col) => col.name === "unit");
+    const hasLbaName = tableInfo.some((col) => col.name === "lba_name");
+
+    if (!hasUnit && tableInfo.some((col) => col.name === "unit_name")) {
+      await db.execute(`ALTER TABLE lba_units RENAME COLUMN unit_name TO unit`);
+      console.log("Renamed unit_name to unit in lba_units table");
+    }
+
+    if (!hasLbaName) {
+      await db.execute(`ALTER TABLE lba_units ADD COLUMN lba_name TEXT`);
+      console.log("Added lba_name column to lba_units table");
+
+      // Attempt to backfill lba_name if possible (though for units it's usually new)
+      // For now we'll just leave it NULL or set it to same as unit if appropriate
+      // But actually, unit is "Unit" and lba_name is "LBA Name".
+      await db.execute(
+        `UPDATE lba_units SET lba_name = unit WHERE lba_name IS NULL`,
+      );
+    }
+  } catch (error) {
+    console.warn("Migration warning for lba_units renaming:", error);
   }
 
   // Create receipt_history table if it doesn't exist
@@ -112,11 +167,11 @@ async function migrateDatabase(db: Database): Promise<void> {
         FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE
       )
     `);
-    console.log('Created receipt_history table');
+    console.log("Created receipt_history table");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (!errorMessage.includes('already exists')) {
-      console.warn('Migration warning for receipt_history:', errorMessage);
+    if (!errorMessage.includes("already exists")) {
+      console.warn("Migration warning for receipt_history:", errorMessage);
     }
   }
 
@@ -131,8 +186,30 @@ async function migrateDatabase(db: Database): Promise<void> {
   } catch (error) {
     // Index might already exist, that's fine
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (!errorMessage.includes('already exists')) {
-      console.warn('Migration warning for receipt_history indexes:', errorMessage);
+    if (!errorMessage.includes("already exists")) {
+      console.warn(
+        "Migration warning for receipt_history indexes:",
+        errorMessage,
+      );
+    }
+  }
+
+  // Add new columns to company_settings if they don't exist
+  const companyColumns = [
+    { name: "address", type: "TEXT" },
+    { name: "phone", type: "TEXT" },
+    { name: "email", type: "TEXT" },
+    { name: "website", type: "TEXT" },
+  ];
+
+  for (const col of companyColumns) {
+    try {
+      await db.execute(
+        `ALTER TABLE company_settings ADD COLUMN ${col.name} ${col.type}`,
+      );
+      console.log(`Added ${col.name} column to company_settings table`);
+    } catch (error) {
+      // Column likely already exists
     }
   }
 }
@@ -142,7 +219,8 @@ async function initializeDatabase(db: Database): Promise<void> {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS lba_units (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      unit_name TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      lba_name TEXT NOT NULL,
       crop TEXT NOT NULL,
       season TEXT NOT NULL,
       unit_head TEXT NOT NULL,
@@ -157,6 +235,7 @@ async function initializeDatabase(db: Database): Promise<void> {
     CREATE TABLE IF NOT EXISTS receipts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       lba_unit_id INTEGER NOT NULL,
+      lba_name TEXT,
       date TEXT NOT NULL,
       whr_number TEXT NOT NULL,
       description TEXT NOT NULL,
@@ -238,6 +317,10 @@ async function initializeDatabase(db: Database): Promise<void> {
       company_name TEXT NOT NULL DEFAULT 'MAN NO BE GOD COMPANY LIMITED',
       company_logo_path TEXT,
       receipt_header_text TEXT,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      website TEXT,
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -265,7 +348,7 @@ async function initializeDatabase(db: Database): Promise<void> {
 
   // Initialize company_settings with default values if empty
   const existingSettings = await db.select<{ count: number }[]>(
-    'SELECT COUNT(*) as count FROM company_settings'
+    "SELECT COUNT(*) as count FROM company_settings",
   );
   if (existingSettings[0]?.count === 0) {
     await db.execute(`
@@ -273,6 +356,9 @@ async function initializeDatabase(db: Database): Promise<void> {
       VALUES ('MAN NO BE GOD COMPANY LIMITED', 'MAN NO BE GOD COMPANY LIMITED')
     `);
   }
+
+  // Run migrations for existing databases
+  await migrateDatabase(db);
 
   // Create indexes for better query performance
   await db.execute(`

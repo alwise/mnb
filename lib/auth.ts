@@ -1,5 +1,5 @@
-import { getDatabase } from './db';
-import { isTauri } from './utils';
+import { getDatabase } from "./db";
+import { isTauri } from "./utils";
 
 export interface User {
   id: number;
@@ -20,7 +20,7 @@ function hashPassword(password: string): string {
   let hash = 0;
   for (let i = 0; i < password.length; i++) {
     const char = password.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
   return hash.toString(36);
@@ -33,18 +33,18 @@ export async function signup(
   email: string,
   password: string,
   fullName: string,
-  signatureFile: File
+  signatureFile: File,
 ): Promise<number> {
   const db = await getDatabase();
 
   // Check if user already exists
   const existing = await db.select<{ id: number }[]>(
-    'SELECT id FROM users WHERE email = $1',
-    [email]
+    "SELECT id FROM users WHERE email = $1",
+    [email],
   );
 
   if (existing.length > 0) {
-    throw new Error('User with this email already exists');
+    throw new Error("User with this email already exists");
   }
 
   // Hash password
@@ -52,14 +52,18 @@ export async function signup(
 
   // Save signature file
   if (!isTauri()) {
-    throw new Error('File operations are only available in Tauri environment');
+    throw new Error("File operations are only available in Tauri environment");
   }
 
-  const { writeFile, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-  const signaturesDir = 'signatures';
-  await mkdir(signaturesDir, { baseDir: BaseDirectory.AppData, recursive: true });
+  const { writeFile, mkdir, BaseDirectory } =
+    await import("@tauri-apps/plugin-fs");
+  const signaturesDir = "signatures";
+  await mkdir(signaturesDir, {
+    baseDir: BaseDirectory.AppData,
+    recursive: true,
+  });
 
-  const fileExtension = signatureFile.name.split('.').pop() || 'png';
+  const fileExtension = signatureFile.name.split(".").pop() || "png";
   const fileName = `user_signature_${Date.now()}.${fileExtension}`;
   const destPath = `${signaturesDir}/${fileName}`;
 
@@ -72,7 +76,7 @@ export async function signup(
     `INSERT INTO users (email, password_hash, full_name, signature_path, created_at, updated_at)
      VALUES ($1, $2, $3, $4, datetime('now'), datetime('now'))
      RETURNING id`,
-    [email, passwordHash, fullName, destPath]
+    [email, passwordHash, fullName, destPath],
   );
 
   return result[0].id;
@@ -81,7 +85,10 @@ export async function signup(
 /**
  * Login user
  */
-export async function login(email: string, password: string): Promise<User | null> {
+export async function login(
+  email: string,
+  password: string,
+): Promise<User | null> {
   const db = await getDatabase();
   const passwordHash = hashPassword(password);
 
@@ -89,7 +96,7 @@ export async function login(email: string, password: string): Promise<User | nul
     `SELECT id, email, full_name, profile_photo_path, signature_path, is_active, created_at, updated_at
      FROM users
      WHERE email = $1 AND password_hash = $2 AND is_active = 1`,
-    [email, passwordHash]
+    [email, passwordHash],
   );
 
   if (users.length === 0) {
@@ -108,11 +115,11 @@ export async function login(email: string, password: string): Promise<User | nul
  * Clears stale session if user is not found
  */
 export async function getCurrentUser(): Promise<User | null> {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return null;
   }
 
-  const userId = localStorage.getItem('current_user_id');
+  const userId = localStorage.getItem("current_user_id");
   if (!userId) {
     return null;
   }
@@ -123,12 +130,12 @@ export async function getCurrentUser(): Promise<User | null> {
       `SELECT id, email, full_name, profile_photo_path, signature_path, is_active, created_at, updated_at
        FROM users
        WHERE id = $1 AND is_active = 1`,
-      [parseInt(userId)]
+      [parseInt(userId)],
     );
 
     if (users.length === 0) {
       // User not found or inactive - clear stale session
-      localStorage.removeItem('current_user_id');
+      localStorage.removeItem("current_user_id");
       return null;
     }
 
@@ -139,8 +146,8 @@ export async function getCurrentUser(): Promise<User | null> {
     };
   } catch (error) {
     // On error, clear session to be safe
-    console.error('Error getting current user:', error);
-    localStorage.removeItem('current_user_id');
+    console.error("Error getting current user:", error);
+    localStorage.removeItem("current_user_id");
     return null;
   }
 }
@@ -149,8 +156,8 @@ export async function getCurrentUser(): Promise<User | null> {
  * Logout current user
  */
 export function logout(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('current_user_id');
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("current_user_id");
   }
 }
 
@@ -158,8 +165,8 @@ export function logout(): void {
  * Set current user session
  */
 export function setCurrentUser(userId: number): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('current_user_id', userId.toString());
+  if (typeof window !== "undefined") {
+    localStorage.setItem("current_user_id", userId.toString());
   }
 }
 
@@ -172,7 +179,7 @@ export async function updateUserProfile(
     full_name?: string;
     profile_photo_path?: string | null;
     signature_path?: string | null;
-  }
+  },
 ): Promise<void> {
   const db = await getDatabase();
   const fields: string[] = [];
@@ -200,24 +207,28 @@ export async function updateUserProfile(
   values.push(userId);
 
   await db.execute(
-    `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramIndex}`,
-    values
+    `UPDATE users SET ${fields.join(", ")} WHERE id = $${paramIndex}`,
+    values,
   );
 }
 
 /**
  * Upload user profile photo
  */
-export async function uploadUserProfilePhoto(userId: number, photoFile: File): Promise<string> {
+export async function uploadUserProfilePhoto(
+  userId: number,
+  photoFile: File,
+): Promise<string> {
   if (!isTauri()) {
-    throw new Error('File upload is only available in Tauri environment');
+    throw new Error("File upload is only available in Tauri environment");
   }
 
-  const { writeFile, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-  const photosDir = 'users/photos';
+  const { writeFile, mkdir, BaseDirectory } =
+    await import("@tauri-apps/plugin-fs");
+  const photosDir = "users/photos";
   await mkdir(photosDir, { baseDir: BaseDirectory.AppData, recursive: true });
 
-  const fileExtension = photoFile.name.split('.').pop() || 'png';
+  const fileExtension = photoFile.name.split(".").pop() || "png";
   const fileName = `user_${userId}_${Date.now()}.${fileExtension}`;
   const destPath = `${photosDir}/${fileName}`;
 
@@ -233,16 +244,23 @@ export async function uploadUserProfilePhoto(userId: number, photoFile: File): P
 /**
  * Upload user signature
  */
-export async function uploadUserSignature(userId: number, signatureFile: File): Promise<string> {
+export async function uploadUserSignature(
+  userId: number,
+  signatureFile: File,
+): Promise<string> {
   if (!isTauri()) {
-    throw new Error('File upload is only available in Tauri environment');
+    throw new Error("File upload is only available in Tauri environment");
   }
 
-  const { writeFile, mkdir, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-  const signaturesDir = 'signatures';
-  await mkdir(signaturesDir, { baseDir: BaseDirectory.AppData, recursive: true });
+  const { writeFile, mkdir, BaseDirectory } =
+    await import("@tauri-apps/plugin-fs");
+  const signaturesDir = "signatures";
+  await mkdir(signaturesDir, {
+    baseDir: BaseDirectory.AppData,
+    recursive: true,
+  });
 
-  const fileExtension = signatureFile.name.split('.').pop() || 'png';
+  const fileExtension = signatureFile.name.split(".").pop() || "png";
   const fileName = `user_signature_${userId}_${Date.now()}.${fileExtension}`;
   const destPath = `${signaturesDir}/${fileName}`;
 
@@ -258,11 +276,13 @@ export async function uploadUserSignature(userId: number, signatureFile: File): 
 /**
  * Get user profile photo as data URL
  */
-export async function getUserProfilePhotoDataUrl(userId: number): Promise<string | null> {
+export async function getUserProfilePhotoDataUrl(
+  userId: number,
+): Promise<string | null> {
   const db = await getDatabase();
   const users = await db.select<{ profile_photo_path: string | null }[]>(
-    'SELECT profile_photo_path FROM users WHERE id = $1',
-    [userId]
+    "SELECT profile_photo_path FROM users WHERE id = $1",
+    [userId],
   );
 
   if (!users[0]?.profile_photo_path) {
@@ -274,10 +294,12 @@ export async function getUserProfilePhotoDataUrl(userId: number): Promise<string
   }
 
   try {
-    const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-    const fileData = await readFile(users[0].profile_photo_path, { baseDir: BaseDirectory.AppData });
+    const { readFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+    const fileData = await readFile(users[0].profile_photo_path, {
+      baseDir: BaseDirectory.AppData,
+    });
     const bytes = new Uint8Array(fileData);
-    let binary = '';
+    let binary = "";
     const chunkSize = 8192;
     for (let i = 0; i < bytes.length; i += chunkSize) {
       const chunk = bytes.subarray(i, i + chunkSize);
@@ -285,16 +307,16 @@ export async function getUserProfilePhotoDataUrl(userId: number): Promise<string
     }
     const base64 = btoa(binary);
 
-    const ext = users[0].profile_photo_path.split('.').pop()?.toLowerCase();
-    let mimeType = 'image/png';
-    if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-    else if (ext === 'gif') mimeType = 'image/gif';
-    else if (ext === 'webp') mimeType = 'image/webp';
-    else if (ext === 'svg') mimeType = 'image/svg+xml';
+    const ext = users[0].profile_photo_path.split(".").pop()?.toLowerCase();
+    let mimeType = "image/png";
+    if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
+    else if (ext === "gif") mimeType = "image/gif";
+    else if (ext === "webp") mimeType = "image/webp";
+    else if (ext === "svg") mimeType = "image/svg+xml";
 
     return `data:${mimeType};base64,${base64}`;
   } catch (error) {
-    console.error('Error reading profile photo:', error);
+    console.error("Error reading profile photo:", error);
     return null;
   }
 }
@@ -302,11 +324,13 @@ export async function getUserProfilePhotoDataUrl(userId: number): Promise<string
 /**
  * Get user signature as data URL
  */
-export async function getUserSignatureDataUrl(userId: number): Promise<string | null> {
+export async function getUserSignatureDataUrl(
+  userId: number,
+): Promise<string | null> {
   const db = await getDatabase();
   const users = await db.select<{ signature_path: string | null }[]>(
-    'SELECT signature_path FROM users WHERE id = $1',
-    [userId]
+    "SELECT signature_path FROM users WHERE id = $1",
+    [userId],
   );
 
   if (!users[0]?.signature_path) {
@@ -318,10 +342,12 @@ export async function getUserSignatureDataUrl(userId: number): Promise<string | 
   }
 
   try {
-    const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-    const fileData = await readFile(users[0].signature_path, { baseDir: BaseDirectory.AppData });
+    const { readFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+    const fileData = await readFile(users[0].signature_path, {
+      baseDir: BaseDirectory.AppData,
+    });
     const bytes = new Uint8Array(fileData);
-    let binary = '';
+    let binary = "";
     const chunkSize = 8192;
     for (let i = 0; i < bytes.length; i += chunkSize) {
       const chunk = bytes.subarray(i, i + chunkSize);
@@ -329,16 +355,16 @@ export async function getUserSignatureDataUrl(userId: number): Promise<string | 
     }
     const base64 = btoa(binary);
 
-    const ext = users[0].signature_path.split('.').pop()?.toLowerCase();
-    let mimeType = 'image/png';
-    if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-    else if (ext === 'gif') mimeType = 'image/gif';
-    else if (ext === 'webp') mimeType = 'image/webp';
-    else if (ext === 'svg') mimeType = 'image/svg+xml';
+    const ext = users[0].signature_path.split(".").pop()?.toLowerCase();
+    let mimeType = "image/png";
+    if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
+    else if (ext === "gif") mimeType = "image/gif";
+    else if (ext === "webp") mimeType = "image/webp";
+    else if (ext === "svg") mimeType = "image/svg+xml";
 
     return `data:${mimeType};base64,${base64}`;
   } catch (error) {
-    console.error('Error reading signature:', error);
+    console.error("Error reading signature:", error);
     return null;
   }
 }
@@ -349,47 +375,48 @@ export async function getUserSignatureDataUrl(userId: number): Promise<string | 
 export async function getAllUserEmails(): Promise<string[]> {
   const db = await getDatabase();
   const users = await db.select<{ email: string }[]>(
-    'SELECT email FROM users WHERE is_active = 1 ORDER BY created_at DESC'
+    "SELECT email FROM users WHERE is_active = 1 ORDER BY created_at DESC",
   );
-  return users.map(u => u.email);
+  return users.map((u) => u.email);
 }
 
 /**
  * Generate a password reset token
  */
-export async function generatePasswordResetToken(email: string): Promise<string> {
+export async function generatePasswordResetToken(
+  email: string,
+): Promise<string> {
   const db = await getDatabase();
 
   // Find user by email
   const users = await db.select<{ id: number }[]>(
-    'SELECT id FROM users WHERE email = $1 AND is_active = 1',
-    [email]
+    "SELECT id FROM users WHERE email = $1 AND is_active = 1",
+    [email],
   );
 
   if (users.length === 0) {
-    throw new Error('User not found');
+    throw new Error("User not found");
   }
 
   const userId = users[0].id;
 
-  // Generate a secure token
+  // Generate a secure token (no spaces/special chars that break URLs)
   const token = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}-${Math.random().toString(36).substring(2, 15)}`;
-  
-  // Token expires in 1 hour
-  const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 1);
+
+  // Token expires in 24 hours (UTC) so copied token can be used later
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   // Invalidate any existing tokens for this user
   await db.execute(
-    'UPDATE password_reset_tokens SET used = 1 WHERE user_id = $1 AND used = 0',
-    [userId]
+    "UPDATE password_reset_tokens SET used = 1 WHERE user_id = $1 AND used = 0",
+    [userId],
   );
 
-  // Create new token
+  // Create new token - store expiry as ISO UTC string
   await db.execute(
     `INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at)
      VALUES ($1, $2, $3, datetime('now'))`,
-    [userId, token, expiresAt.toISOString()]
+    [userId, token, expiresAt.toISOString()],
   );
 
   return token;
@@ -397,14 +424,21 @@ export async function generatePasswordResetToken(email: string): Promise<string>
 
 /**
  * Validate password reset token
+ * Trims token so pasted/copied values with stray spaces still work.
  */
-export async function validatePasswordResetToken(token: string): Promise<number | null> {
+export async function validatePasswordResetToken(
+  token: string,
+): Promise<number | null> {
   const db = await getDatabase();
+  const trimmed = (token || "").trim();
+  if (!trimmed) return null;
 
-  const tokens = await db.select<{ user_id: number; expires_at: string; used: number }[]>(
+  const tokens = await db.select<
+    { user_id: number; expires_at: string; used: number }[]
+  >(
     `SELECT user_id, expires_at, used FROM password_reset_tokens 
      WHERE token = $1 AND used = 0`,
-    [token]
+    [trimmed],
   );
 
   if (tokens.length === 0) {
@@ -413,9 +447,10 @@ export async function validatePasswordResetToken(token: string): Promise<number 
 
   const tokenData = tokens[0];
 
-  // Check if token is expired
-  const expiresAt = new Date(tokenData.expires_at);
-  if (expiresAt < new Date()) {
+  // Parse expiry as UTC (ISO string or "YYYY-MM-DD HH:MM:SS") and compare to now
+  const expiresAtMs = new Date(tokenData.expires_at).getTime();
+  const nowMs = Date.now();
+  if (Number.isNaN(expiresAtMs) || expiresAtMs < nowMs) {
     return null;
   }
 
@@ -424,17 +459,23 @@ export async function validatePasswordResetToken(token: string): Promise<number 
 
 /**
  * Reset password using token
+ * Token is trimmed so pasted/copied values work.
  */
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<void> {
   const db = await getDatabase();
+  const trimmed = (token || "").trim();
+  if (!trimmed) throw new Error("Invalid or expired reset token");
 
-  const userId = await validatePasswordResetToken(token);
+  const userId = await validatePasswordResetToken(trimmed);
   if (!userId) {
-    throw new Error('Invalid or expired reset token');
+    throw new Error("Invalid or expired reset token");
   }
 
   if (newPassword.length < 6) {
-    throw new Error('Password must be at least 6 characters long');
+    throw new Error("Password must be at least 6 characters long");
   }
 
   // Hash new password
@@ -443,41 +484,45 @@ export async function resetPassword(token: string, newPassword: string): Promise
   // Update password
   await db.execute(
     `UPDATE users SET password_hash = $1, updated_at = datetime('now') WHERE id = $2`,
-    [passwordHash, userId]
+    [passwordHash, userId],
   );
 
   // Mark token as used
   await db.execute(
-    'UPDATE password_reset_tokens SET used = 1 WHERE token = $1',
-    [token]
+    "UPDATE password_reset_tokens SET used = 1 WHERE token = $1",
+    [trimmed],
   );
 }
 
 /**
  * Change password for logged-in user
  */
-export async function changePassword(userId: number, currentPassword: string, newPassword: string): Promise<void> {
+export async function changePassword(
+  userId: number,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
   const db = await getDatabase();
 
   if (newPassword.length < 6) {
-    throw new Error('Password must be at least 6 characters long');
+    throw new Error("Password must be at least 6 characters long");
   }
 
   // Verify current password
   const passwordHash = hashPassword(currentPassword);
   const users = await db.select<{ id: number }[]>(
-    'SELECT id FROM users WHERE id = $1 AND password_hash = $2',
-    [userId, passwordHash]
+    "SELECT id FROM users WHERE id = $1 AND password_hash = $2",
+    [userId, passwordHash],
   );
 
   if (users.length === 0) {
-    throw new Error('Current password is incorrect');
+    throw new Error("Current password is incorrect");
   }
 
   // Update password
   const newPasswordHash = hashPassword(newPassword);
   await db.execute(
     `UPDATE users SET password_hash = $1, updated_at = datetime('now') WHERE id = $2`,
-    [newPasswordHash, userId]
+    [newPasswordHash, userId],
   );
 }

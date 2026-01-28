@@ -10,6 +10,7 @@ import type {
   LBAUnit,
 } from '@/types';
 import { useMutation } from './useMutation';
+import { QUERY_KEYS } from '@/lib/queryKeys';
 
 /**
  * Hook to create a new receipt
@@ -23,10 +24,11 @@ export function useCreateReceipt() {
       return await createReceipt(data.receipt, data.items);
     },
     invalidateQueries: [
-      ['receipts'],
-      ['receipts', 'paginated'],
-      ['receipts', 'grouped'],
-      ['receipts', 'stats'],
+      QUERY_KEYS.receipts.list() as any,
+      QUERY_KEYS.receipts.paginated() as any,
+      QUERY_KEYS.receipts.grouped as any,
+      QUERY_KEYS.receipts.stats as any,
+      ['receipts', 'totals'] as any,
     ],
   });
 }
@@ -44,10 +46,11 @@ export function useUpdateReceipt() {
       return await updateReceipt(data.id, data.receipt, data.items);
     },
     invalidateQueries: [
-      ['receipts'],
-      ['receipts', 'paginated'],
-      ['receipts', 'grouped'],
-      ['receipts', 'stats'],
+      QUERY_KEYS.receipts.list() as any,
+      QUERY_KEYS.receipts.paginated() as any,
+      QUERY_KEYS.receipts.grouped as any,
+      QUERY_KEYS.receipts.stats as any,
+      ['receipts', 'totals'] as any,
     ],
   });
 }
@@ -61,10 +64,11 @@ export function useDeleteReceipt() {
       return await deleteReceipt(id);
     },
     invalidateQueries: [
-      ['receipts'],
-      ['receipts', 'paginated'],
-      ['receipts', 'grouped'],
-      ['receipts', 'stats'],
+      QUERY_KEYS.receipts.list() as any,
+      QUERY_KEYS.receipts.paginated() as any,
+      QUERY_KEYS.receipts.grouped as any,
+      QUERY_KEYS.receipts.stats as any,
+      ['receipts', 'totals'] as any,
     ],
   });
 }
@@ -78,8 +82,8 @@ export function useCreateLBAUnit() {
       return await createLBAUnit(unit);
     },
     invalidateQueries: [
-      ['lba-units'],
-      ['lba-units', 'paginated'],
+      QUERY_KEYS.lbaUnits.list() as any,
+      QUERY_KEYS.lbaUnits.paginated() as any,
     ],
   });
 }

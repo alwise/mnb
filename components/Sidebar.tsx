@@ -2,15 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTexts } from '@/hooks/useTexts';
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { t } = useTexts();
 
   const navItems = [
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/receipts/create', label: 'Create Stock Card' },
-    { href: '/receipts', label: 'Stock Cards List' },
-    { href: '/profile', label: 'Settings' },
+    { href: '/dashboard', label: t('nav.dashboard', 'Dashboard') },
+    { href: '/receipts/create', label: t('nav.createReceipt', 'Create Stock Card') },
+    { href: '/receipts', label: t('nav.receiptList', 'Stock Cards List') },
+    { href: '/profile', label: t('nav.settings', 'Settings') },
   ];
 
   return (
@@ -21,11 +23,10 @@ export default function Sidebar() {
             <li key={item.href}>
               <Link
                 href={item.href}
-                className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  pathname === item.href
+                className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${pathname === item.href
                     ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-500'
                     : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 {item.label}
               </Link>

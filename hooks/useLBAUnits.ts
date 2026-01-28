@@ -7,13 +7,14 @@ import {
 } from '@/lib/receipts';
 import type { LBAUnit } from '@/types';
 import { usePaginatedQuery } from './usePaginatedQuery';
+import { QUERY_KEYS } from '@/lib/queryKeys';
 
 /**
  * Hook to fetch all LBA units
  */
 export function useLBAUnits() {
   return useQuery({
-    queryKey: ['lba-units', 'all'],
+    queryKey: QUERY_KEYS.lbaUnits.all,
     queryFn: getAllLBAUnits,
   });
 }
@@ -23,7 +24,7 @@ export function useLBAUnits() {
  */
 export function useLBAUnit(id: number | undefined) {
   return useQuery({
-    queryKey: ['lba-units', id],
+    queryKey: id ? QUERY_KEYS.lbaUnits.detail(id) : ['lba-units', 'detail'],
     queryFn: () => (id ? getLBAUnitById(id) : null),
     enabled: !!id,
   });
@@ -34,7 +35,7 @@ export function useLBAUnit(id: number | undefined) {
  */
 export function usePaginatedLBAUnits(pageSize: number = 20) {
   return usePaginatedQuery<LBAUnit>({
-    queryKey: ['lba-units', 'paginated'],
+    queryKey: QUERY_KEYS.lbaUnits.paginated(),
     queryFn: async ({ limit, offset }) => {
       const result = await getLBAUnitsPaginated({ limit, offset });
       return {

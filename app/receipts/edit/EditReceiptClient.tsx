@@ -2,12 +2,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import AutocompleteInput from '@/components/AutocompleteInput';
 import { Input, Textarea, Button, ImagePicker, useDialog } from '@/components/ui';
 import {
   getReceiptById,
   updateReceipt,
+  updateLBAUnit,
   getPreviousBalance,
   searchLBAUnits,
   searchWHRNumbers,
@@ -17,12 +18,17 @@ import {
 import { getReceiptPhotoDataUrl, saveReceiptPhoto } from '@/lib/settings';
 import { getUserSignatureDataUrl } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
-import type { LBAUnit, ReceiptItem, ReceiptWithUnit } from '@/types';
+import { useQueryClient } from '@tanstack/react-query';
+import { QUERY_KEYS } from '@/lib/queryKeys';
+import { useTexts } from '@/hooks/useTexts';
+import type { LBAUnit, ReceiptItem } from '@/types';
 
 export default function EditReceiptClient({ receiptId }: { receiptId: number }) {
   const router = useRouter();
   const { showAlert } = useDialog();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { t } = useTexts();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -80,7 +86,8 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
   });
 
   const [unitFields, setUnitFields] = useState({
-    unit_name: '',
+    unit: '',
+    lba_name: '',
     crop: '',
     season: '',
     unit_head: '',
@@ -89,7 +96,8 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
   });
 
   const [unitFormData, setUnitFormData] = useState({
-    unit_name: '',
+    unit: '',
+    lba_name: '',
     crop: '',
     season: '',
     unit_head: '',
@@ -171,7 +179,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       setLoading(true);
       const receipt = await getReceiptById(receiptId);
       if (!receipt) {
-        await showAlert('Stock card not found');
+        await showAlert(t('receipts.stockCardNotFound'));
         router.push('/receipts');
         return;
       }
@@ -192,11 +200,12 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       });
 
       // Set unit fields
-      if (receipt.unit_name) {
-        setLbaUnitDisplay(`${receipt.unit_name} (${receipt.lba_code}) - ${receipt.crop} ${receipt.season}`);
+      if (receipt.unit) {
+        setLbaUnitDisplay(receipt.lba_name || receipt.unit || '');
         setSelectedLBAUnit({
           id: receipt.lba_unit_id,
-          unit_name: receipt.unit_name,
+          unit: receipt.unit,
+          lba_name: receipt.lba_name || receipt.unit,
           crop: receipt.crop || '',
           season: receipt.season || '',
           unit_head: receipt.unit_head || '',
@@ -204,7 +213,8 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
           lba_code: receipt.lba_code || '',
         });
         setUnitFields({
-          unit_name: receipt.unit_name,
+          unit: receipt.unit,
+          lba_name: receipt.lba_name || receipt.unit,
           crop: receipt.crop || '',
           season: receipt.season || '',
           unit_head: receipt.unit_head || '',
@@ -260,7 +270,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       }
     } catch (error) {
       console.error('Error loading receipt:', error);
-      await showAlert('Error loading stock card. Make sure you are running in Tauri environment.');
+      await showAlert(t('receipts.loadError'));
     } finally {
       setLoading(false);
     }
@@ -287,7 +297,8 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       setFormData(prev => ({ ...prev, lba_unit_id: unit.id!.toString() }));
     }
     setUnitFields({
-      unit_name: unit.unit_name || '',
+      unit: unit.unit || '',
+      lba_name: unit.lba_name || '',
       crop: unit.crop || '',
       season: unit.season || '',
       unit_head: unit.unit_head || '',
@@ -297,7 +308,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
   }
 
   function getLBAUnitDisplay(unit: LBAUnit): string {
-    return `${unit.unit_name} (${unit.lba_code}) - ${unit.crop} ${unit.season}`;
+    return `${unit.lba_name}`;
   }
 
   useEffect(() => {
@@ -403,17 +414,18 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       setFormData((prev) => ({ ...prev, lba_unit_id: unitId.toString() }));
       setShowUnitForm(false);
       setUnitFormData({
-        unit_name: '',
+        unit: '',
+        lba_name: '',
         crop: '',
         season: '',
         unit_head: '',
         qci_name: '',
         lba_code: '',
       });
-      await showAlert('LBA Unit created successfully!');
+      await showAlert(t('lbaUnit.createSuccess'));
     } catch (error) {
       console.error('Error creating LBA unit:', error);
-      await showAlert('Error creating LBA unit');
+      await showAlert(t('lbaUnit.createError'));
     } finally {
       setSubmitting(false);
     }
@@ -422,8 +434,8 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!lbaUnitDisplay.trim() && !unitFields.unit_name.trim()) {
-      await showAlert('Please enter a NAME OF LBA or fill in the unit information.');
+    if (!lbaUnitDisplay.trim() && !unitFields.unit.trim()) {
+      await showAlert(`Please enter an ${t('lbaUnit.lbaName')} or fill in the unit information.`);
       return;
     }
 
@@ -432,20 +444,30 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       await new Promise(resolve => setTimeout(resolve, 200));
 
       let lbaUnitId: number;
+      const unitDataToSave = {
+        unit: unitFields.unit || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
+        lba_name: unitFields.lba_name || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
+        crop: unitFields.crop || '',
+        season: unitFields.season || '',
+        unit_head: unitFields.unit_head || '',
+        qci_name: unitFields.qci_name || '',
+        lba_code: unitFields.lba_code || '',
+      };
+      console.log('Unit fields state:', unitFields);
+      console.log('LBA display value:', lbaUnitDisplay);
+      console.log('Unit data to save:', unitDataToSave);
+
       if (selectedLBAUnit?.id) {
         lbaUnitId = selectedLBAUnit.id;
+        console.log('Updating existing LBA unit:', lbaUnitId);
+        await updateLBAUnit(lbaUnitId, unitDataToSave);
       } else if (formData.lba_unit_id) {
         lbaUnitId = parseInt(formData.lba_unit_id);
+        console.log('Updating LBA unit from formData:', lbaUnitId);
+        await updateLBAUnit(lbaUnitId, unitDataToSave);
       } else {
-        const newUnitData = {
-          unit_name: unitFields.unit_name || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
-          crop: unitFields.crop || '',
-          season: unitFields.season || '',
-          unit_head: unitFields.unit_head || '',
-          qci_name: unitFields.qci_name || '',
-          lba_code: unitFields.lba_code || '',
-        };
-        lbaUnitId = await createLBAUnit(newUnitData);
+        console.log('Creating new LBA unit');
+        lbaUnitId = await createLBAUnit(unitDataToSave);
         setFormData(prev => ({ ...prev, lba_unit_id: lbaUnitId.toString() }));
         await new Promise(resolve => setTimeout(resolve, 300));
       }
@@ -479,8 +501,9 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         return;
       }
 
+      // Note: lba_unit_id is not passed to updateReceipt - it uses the existing one from the DB
       const receiptData = {
-        lba_unit_id: lbaUnitId,
+        lba_name: unitFields.lba_name || lbaUnitDisplay.split('(')[0].trim() || 'New Unit',
         date: receiptDate,
         whr_number: receiptWHR,
         description: firstItem?.description || formData.description || 'Stock Card Entry',
@@ -512,7 +535,9 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
           item_order: index,
         }));
 
+      console.log('Updating receipt with data:', { receiptId, receiptData, receiptItems });
       await updateReceipt(receiptId, receiptData, receiptItems.length > 0 ? receiptItems : undefined);
+      console.log('Receipt update completed successfully');
 
       // Save photo if a new one was uploaded
       if (photo) {
@@ -524,28 +549,43 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         }
       }
 
-      await showAlert('Stock Card updated successfully!');
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list() });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated() });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.detail(receiptId) });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.stats });
+      await queryClient.invalidateQueries({ queryKey: ['receipts', 'totals'] });
+      // Also invalidate LBA units cache since we may have updated unit fields
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lbaUnits.list() });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lbaUnits.all });
+
+      await showAlert(t('receipts.updateSuccess'));
       router.push(`/receipts/view?id=${receiptId}`);
     } catch (error) {
       console.error('Error updating stock card:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await showAlert(`Error updating stock card: ${errorMessage}`);
+      await showAlert(`${t('receipts.updateError')}: ${errorMessage}`);
+      // Reload receipt from DB so the form shows persisted state, not unsaved edits
+      try {
+        await loadReceipt();
+      } catch (reloadErr) {
+        console.error('Error reloading receipt after update failure:', reloadErr);
+      }
     } finally {
       setSubmitting(false);
     }
   }
 
-  const cumulativeCredit = cumulativeTotals.cumulative_credit + (parseFloat(formData.credit_amount) || 0);
-  const cumulativeDebit = cumulativeTotals.cumulative_debit + (parseFloat(formData.debit_amount) || 0);
-  const cumulativeMts = cumulativeTotals.cumulative_mts + (parseFloat(formData.mts) || 0);
-  const cumulativeBags = cumulativeTotals.cumulative_bags + (parseInt(formData.bags) || 0);
+  // const cumulativeCredit = cumulativeTotals.cumulative_credit + (parseFloat(formData.credit_amount) || 0);
+  // const cumulativeDebit = cumulativeTotals.cumulative_debit + (parseFloat(formData.debit_amount) || 0);
+  // const cumulativeMts = cumulativeTotals.cumulative_mts + (parseFloat(formData.mts) || 0);
+  // const cumulativeBags = cumulativeTotals.cumulative_bags + (parseInt(formData.bags) || 0);
 
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="text-center py-12">
-            <p className="text-gray-600">Loading receipt...</p>
+            <p className="text-gray-600">{t('common.loading')}</p>
           </div>
         </div>
       </div>
@@ -555,36 +595,36 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
   return (
     <div className="max-w-[98%] mx-auto py-6" style={{ overflowY: 'visible' }}>
       <div className="py-6" style={{ overflowY: 'visible' }}>
-        {/* Header */}
-        <div className="mb-6 text-center border-b-2 border-blue-600 pb-4">
+        {/* Header - same structure as create page */}
+        {/* <div className="mb-6 text-center border-b-2 border-blue-600 pb-4">
           <h1 className="text-sm font-semibold text-blue-600 mb-2">EDIBLE NUTS – CASHEW</h1>
           <h2 className="text-3xl font-bold text-blue-600 underline">LBA STOCK CARD</h2>
-        </div>
-        {/* 
+        </div> */}
+
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Edit Stock Card</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{t('receipts.editReceipt')}</h2>
           <div className="flex gap-2">
             <Button
               type="button"
               variant="primary"
               onClick={() => setShowUnitForm(!showUnitForm)}
             >
-              {showUnitForm ? 'Cancel' : '+ New LBA Unit'}
+              {showUnitForm ? t('common.cancel') : t('lbaUnit.newUnit')}
             </Button>
           </div>
-        </div> */}
+        </div>
         {/* 
         {showUnitForm && (
           <div className="mb-6 bg-white shadow rounded-lg p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Create New LBA Unit</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">{t('lbaUnit.createUnit')}</h3>
             <form onSubmit={handleCreateUnit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <Input
                   type="text"
                   label="Unit Name"
                   required
-                  value={unitFormData.unit_name}
-                  onChange={(e) => setUnitFormData({ ...unitFormData, unit_name: e.target.value })}
+                  value={unitFormData.unit}
+                  onChange={(e) => setUnitFormData({ ...unitFormData, unit: e.target.value })}
                 />
                 <Input
                   type="text"
@@ -635,14 +675,19 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
           </div>
         )} */}
 
-        <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-2 sm:p-4" style={{ maxHeight: 'none', overflowY: 'visible' }}>
+        <form onSubmit={handleSubmit}
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={true}
+          className="bg-white shadow rounded-lg p-2 sm:p-4" style={{ maxHeight: 'none', overflowY: 'visible' }}>
           <div className="space-y-6" style={{ maxHeight: 'none', overflowY: 'visible' }}>
             {/* Top Section: Photo and Unit Info */}
             <div className="grid grid-cols-3 gap-6 border-b-2 border-blue-600 pb-6">
               {/* Photo Area */}
               <div className="col-span-1">
                 <ImagePicker
-                  label={<span className="text-xl font-bold text-blue-600">PHOTO</span>}
+                  label={<span className="text-xl font-bold text-blue-600">{t('common.photo')}</span>}
                   value={photoPreview}
                   onChange={handlePhotoChange}
                   size="custom"
@@ -659,7 +704,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
               <div className="col-span-2 space-y-4">
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">NAME OF LBA:</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('lbaUnit.lbaName')}:</label>
                     <AutocompleteInput<LBAUnit>
                       value={lbaUnitDisplay}
                       onChange={(value) => {
@@ -668,28 +713,31 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                           setSelectedLBAUnit(null);
                           setFormData(prev => ({ ...prev, lba_unit_id: '' }));
                           setUnitFields({
-                            unit_name: '',
+                            unit: '',
+                            lba_name: '',
                             crop: '',
                             season: '',
                             unit_head: '',
                             qci_name: '',
                             lba_code: '',
                           });
-                        } else if (!selectedLBAUnit) {
-                          setUnitFields(prev => ({ ...prev, unit_name: value }));
+                        } else {
+                          // Always update unit and lba_name when user types
+                          // This ensures manual edits are captured even when editing an existing unit
+                          setUnitFields(prev => ({ ...prev, unit: value, lba_name: value }));
                         }
                       }}
                       onSelect={handleLBAUnitSelect}
                       fetchSuggestions={searchLBAUnits}
                       getDisplayValue={getLBAUnitDisplay}
-                      placeholder="Type to search or enter manually..."
+                      placeholder={t('lbaUnit.placeholder')}
                       className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
                     <Input
                       type="text"
-                      label="CROP:"
+                      label={t('lbaUnit.crop').toUpperCase() + ':'}
                       value={unitFields.crop}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, crop: e.target.value }))}
                     />
@@ -697,7 +745,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                   <div>
                     <Input
                       type="text"
-                      label="SEASON:"
+                      label={t('lbaUnit.season').toUpperCase() + ':'}
                       value={unitFields.season}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, season: e.target.value }))}
                     />
@@ -707,16 +755,16 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                   <div>
                     <Input
                       type="text"
-                      label="UNIT:"
-                      value={unitFields.unit_name}
-                      onChange={(e) => setUnitFields(prev => ({ ...prev, unit_name: e.target.value }))}
+                      label={t('lbaUnit.unit').toUpperCase() + ':'}
+                      value={unitFields.unit}
+                      onChange={(e) => setUnitFields(prev => ({ ...prev, unit: e.target.value }))}
                     />
                     <input type="hidden" value={formData.lba_unit_id} />
                   </div>
                   <div>
                     <Input
                       type="text"
-                      label="QCI NAME:"
+                      label={t('lbaUnit.qciName').toUpperCase() + ':'}
                       value={unitFields.qci_name}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, qci_name: e.target.value }))}
                     />
@@ -724,7 +772,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                   <div>
                     <Input
                       type="text"
-                      label="UNIT HEAD:"
+                      label={t('lbaUnit.unitHead').toUpperCase() + ':'}
                       value={unitFields.unit_head}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, unit_head: e.target.value }))}
                     />
@@ -734,7 +782,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                   <div>
                     <Input
                       type="text"
-                      label="LBA Code:"
+                      label={t('lbaUnit.lbaCode').toUpperCase() + ':'}
                       value={unitFields.lba_code}
                       onChange={(e) => setUnitFields(prev => ({ ...prev, lba_code: e.target.value }))}
                     />
@@ -746,35 +794,39 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
             {/* Stock Card Table */}
             <div className="w-full">
               <div className="mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Activity Log</h3>
+                <h3 className="text-lg font-medium text-gray-900">{t('activityLog.title')}</h3>
               </div>
               <div className="w-full mb-6" style={{ overflowX: 'auto', overflowY: 'clip', maxHeight: 'none', height: 'auto', paddingBottom: '12px' }}>
                 <table className="w-full border-2 border-blue-600 table-fixed" style={{ height: 'auto', display: 'table', marginBottom: '0', minWidth: '1000px' }}>
                   <thead>
                     <tr className="bg-blue-50">
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[3%]">S.Nº</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[7%]">DATE</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[6%]">WHR Nº</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[20%]">DESCRIPTION OF ACTIVITY</th>
-                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">CREDIT</th>
-                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">DEBIT</th>
-                      <th colSpan={4} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[23%]">WEIGHT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[6%]">BALANCE<br />(GH¢)</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 w-[7%]">ACTION</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[3%]">{t('activityLog.sn')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{t('activityLog.date')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[6%]">{t('activityLog.whrNo')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[20%]">{t('activityLog.description')}</th>
+                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">{t('activityLog.credit')}</th>
+                      <th colSpan={2} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[14%]">{t('activityLog.debit')}</th>
+                      <th colSpan={4} className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[23%]">{t('activityLog.weight')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[6%]">
+                        {t('activityLog.balance').includes('(') ? t('activityLog.balance').split(' (')[0] : t('activityLog.balance')}
+                        <br />
+                        ({t('activityLog.balance').includes('(') ? t('activityLog.balance').split('(')[1] : 'GH¢)'}
+                      </th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[10px] font-bold text-blue-600 text-center w-[7%]">{t('activityLog.action')}</th>
                     </tr>
                     <tr className="bg-blue-50">
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CREDIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM. CREDIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">DEBIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM. DEBIT</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">MTS</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM.MTS</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">BAGS</th>
-                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600">CUM. BAGS</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.credit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumCredit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.debit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumDebit')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.mts')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumMts')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.bags')}</th>
+                      <th className="border border-blue-600 px-0.5 py-1 text-[9px] font-semibold text-blue-600 text-center">{t('activityLog.cumBags')}</th>
                       <th className="border border-blue-600"></th>
                       <th className="border border-blue-600"></th>
                     </tr>
@@ -813,7 +865,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                               type="date"
                               value={item.date}
                               onChange={(e) => updateItem(index, 'date', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 rounded-none"
+                              className="w-full h-full min-h-full text-[10px] p-1 text-center border-0 focus:ring-0 rounded-none"
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
@@ -823,14 +875,14 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                               fetchSuggestions={searchWHRNumbers}
                               getDisplayValue={(item) => item}
                               placeholder=""
-                              className="block w-full h-full min-h-full text-[10px] border-0 focus:ring-0 rounded-none"
+                              className="block w-full h-full min-h-full text-[10px] text-center border-0 focus:ring-0 rounded-none"
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Textarea
                               value={item.description}
                               onChange={(e) => updateItem(index, 'description', e.target.value)}
-                              placeholder="Enter description..."
+                              placeholder={t('activityLog.enterDescription')}
                               rows={2}
                               className="w-full h-full min-h-full text-[10px] border-0 focus:ring-0 focus:outline-none resize-none px-1 py-1 bg-transparent rounded-none"
                               style={{ overflow: 'hidden' }}
@@ -838,52 +890,71 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="decimal"
                               value={item.credit_amount}
-                              onChange={(e) => updateItem(index, 'credit_amount', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                if (val.split('.').length <= 2) {
+                                  updateItem(index, 'credit_amount', val);
+                                }
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumCredit.toFixed(2)}
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="decimal"
                               value={item.debit_amount}
-                              onChange={(e) => updateItem(index, 'debit_amount', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                if (val.split('.').length <= 2) {
+                                  updateItem(index, 'debit_amount', val);
+                                }
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumDebit.toFixed(2)}
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
-                              step="0.01"
+                              type="text"
+                              inputMode="decimal"
                               value={item.mts}
-                              onChange={(e) => updateItem(index, 'mts', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                if (val.split('.').length <= 2) {
+                                  updateItem(index, 'mts', val);
+                                }
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumMts.toFixed(2)}
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
                             <Input
-                              type="number"
+                              type="text"
+                              inputMode="numeric"
                               value={item.bags}
-                              onChange={(e) => updateItem(index, 'bags', e.target.value)}
-                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-right rounded-none"
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9]/g, '');
+                                updateItem(index, 'bags', val);
+                              }}
+                              className="w-full h-full min-h-full text-[10px] p-1 border-0 focus:ring-0 text-center rounded-none"
                             />
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1">
                             {cumBags.toString()}
                           </td>
-                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-right text-[10px] px-1 font-semibold">
+                          <td className="border border-blue-600 p-0 h-px bg-gray-50 text-center text-[10px] px-1 font-semibold">
                             {item.balance_ghc}
                           </td>
                           <td className="border border-blue-600 px-0.5 py-1">
@@ -893,7 +964,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                                 variant="success"
                                 size="sm"
                                 onClick={addItem}
-                                title="Add row below"
+                                title={t('activityLog.addRow')}
                                 className="px-2 py-1 text-xs"
                               >
                                 +
@@ -904,7 +975,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                                   variant="danger"
                                   size="sm"
                                   onClick={() => removeItem(index)}
-                                  title="Remove row"
+                                  title={t('activityLog.removeRow')}
                                   className="px-2 py-1 text-xs"
                                 >
                                   ×
@@ -994,7 +1065,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                 variant="outline"
                 onClick={() => router.back()}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 type="submit"
@@ -1002,7 +1073,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                 isLoading={submitting}
                 disabled={submitting}
               >
-                Update Stock Card
+                {t('common.update')}
               </Button>
             </div>
           </div>

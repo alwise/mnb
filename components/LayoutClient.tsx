@@ -3,20 +3,21 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { AboutProvider } from '@/contexts/AboutContext';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
+import AboutAppDialog from '@/components/AboutAppDialog';
 import { useUpdater } from '@/hooks/useUpdater';
+import { ScrollView } from '@/components/ui';
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading } = useAuth();
-
-  // Initialize auto-updater
-  useUpdater();
+  const { checkForUpdates, checking } = useUpdater();
 
   // Pages that don't need sidebar/header or authentication
-  const authPages = ['/login', '/signup'];
+  const authPages = ['/login', '/signup', '/forgot-password', '/reset-password'];
   const isAuthPage = authPages.includes(pathname);
 
   // Redirect to login if user is not authenticated and not on auth pages
@@ -55,14 +56,19 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 
   // Protected pages with sidebar/header
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      <Header />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto bg-gray-50 ml-64 pt-16">
-          {children}
-        </main>
+    <AboutProvider checkForUpdates={checkForUpdates} checking={checking}>
+      <div className="flex flex-col h-screen overflow-hidden">
+        <Header />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 bg-gray-50 ml-64 pt-16 flex flex-col overflow-hidden">
+            <ScrollView>
+              {children}
+            </ScrollView>
+          </main>
+        </div>
       </div>
-    </div>
+      <AboutAppDialog />
+    </AboutProvider>
   );
 }

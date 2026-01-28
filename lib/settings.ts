@@ -82,7 +82,7 @@ export async function uploadAdminSignature(): Promise<string | null> {
 
     // Create signatures directory if it doesn't exist
     const signaturesDir = 'signatures';
-    
+
     console.log('Creating signatures directory...');
     try {
       await mkdir(signaturesDir, { baseDir: BaseDirectory.AppData, recursive: true });
@@ -114,7 +114,7 @@ export async function uploadAdminSignature(): Promise<string | null> {
       throw new Error(`Failed to read file: ${(err as Error).message}`);
     }
     console.log('File read, size:', fileData.length);
-    
+
     console.log('Writing to destination:', destPath);
     // Write to destination
     await writeFile(destPath, fileData, { baseDir: BaseDirectory.AppData });
@@ -147,10 +147,10 @@ export async function getAdminSignatureDataUrl(): Promise<string | null> {
   try {
     // Dynamic import to avoid issues in Next.js dev mode
     const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-    
+
     // Read file from app data directory
     const fileData = await readFile(signaturePath, { baseDir: BaseDirectory.AppData });
-    
+
     // Convert to base64 - handle large files by chunking
     const bytes = new Uint8Array(fileData);
     let binary = '';
@@ -160,7 +160,7 @@ export async function getAdminSignatureDataUrl(): Promise<string | null> {
       binary += String.fromCharCode(...chunk);
     }
     const base64 = btoa(binary);
-    
+
     // Determine MIME type from file extension
     const ext = signaturePath.split('.').pop()?.toLowerCase();
     let mimeType = 'image/png';
@@ -204,7 +204,7 @@ export async function saveReceiptPhoto(receiptId: number, photoFile: File): Prom
 
     // Create receipts/photos directory if it doesn't exist
     const photosDir = 'receipts/photos';
-    
+
     try {
       await mkdir(photosDir, { baseDir: BaseDirectory.AppData, recursive: true });
     } catch (err) {
@@ -252,10 +252,10 @@ export async function getReceiptPhotoDataUrl(receiptId: number): Promise<string 
   try {
     // Dynamic import to avoid issues in Next.js dev mode
     const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-    
+
     // Read file from app data directory
     const fileData = await readFile(photoPath, { baseDir: BaseDirectory.AppData });
-    
+
     // Convert to base64 - handle large files by chunking
     const bytes = new Uint8Array(fileData);
     let binary = '';
@@ -265,7 +265,7 @@ export async function getReceiptPhotoDataUrl(receiptId: number): Promise<string 
       binary += String.fromCharCode(...chunk);
     }
     const base64 = btoa(binary);
-    
+
     // Determine MIME type from file extension
     const ext = photoPath.split('.').pop()?.toLowerCase();
     let mimeType = 'image/png';
@@ -307,14 +307,15 @@ export async function updateLBAUnit(
   const db = await getDatabase();
   await db.execute(
     `UPDATE lba_units SET
-      unit_name = $1,
-      crop = $2,
-      season = $3,
-      unit_head = $4,
-      qci_name = $5,
-      lba_code = $6
-    WHERE id = $7`,
-    [unit.unit_name, unit.crop, unit.season, unit.unit_head, unit.qci_name, unit.lba_code, id]
+      unit = $1,
+      lba_name = $2,
+      crop = $3,
+      season = $4,
+      unit_head = $5,
+      qci_name = $6,
+      lba_code = $7
+    WHERE id = $8`,
+    [unit.unit, unit.lba_name, unit.crop, unit.season, unit.unit_head, unit.qci_name, unit.lba_code, id]
   );
 }
 

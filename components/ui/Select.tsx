@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   error?: string;
-  label?: string;
+  label?: React.ReactNode;
   helperText?: string;
   options: Array<{ value: string | number; label: string }>;
 }

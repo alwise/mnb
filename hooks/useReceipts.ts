@@ -11,13 +11,14 @@ import {
 } from '@/lib/receipts';
 import type { ReceiptWithUnit } from '@/types';
 import { usePaginatedQuery } from './usePaginatedQuery';
+import { QUERY_KEYS } from '@/lib/queryKeys';
 
 /**
  * Hook to fetch all receipts
  */
 export function useReceipts() {
   return useQuery({
-    queryKey: ['receipts', 'all'],
+    queryKey: QUERY_KEYS.receipts.all,
     queryFn: getAllReceipts,
   });
 }
@@ -27,7 +28,7 @@ export function useReceipts() {
  */
 export function useReceipt(id: number | undefined) {
   return useQuery({
-    queryKey: ['receipts', id],
+    queryKey: id ? QUERY_KEYS.receipts.detail(id) : ['receipts', 'detail'],
     queryFn: () => (id ? getReceiptById(id) : null),
     enabled: !!id,
   });
@@ -38,7 +39,7 @@ export function useReceipt(id: number | undefined) {
  */
 export function useReceiptsByUnit(lbaUnitId: number | undefined) {
   return useQuery({
-    queryKey: ['receipts', 'unit', lbaUnitId],
+    queryKey: lbaUnitId ? QUERY_KEYS.receipts.byUnit(lbaUnitId) : ['receipts', 'unit'],
     queryFn: () => (lbaUnitId ? getReceiptsByUnitId(lbaUnitId) : []),
     enabled: !!lbaUnitId,
   });
@@ -49,7 +50,7 @@ export function useReceiptsByUnit(lbaUnitId: number | undefined) {
  */
 export function useReceiptsGroupedByLBA() {
   return useQuery({
-    queryKey: ['receipts', 'grouped'],
+    queryKey: QUERY_KEYS.receipts.grouped,
     queryFn: getReceiptsGroupedByLBA,
   });
 }
@@ -59,7 +60,7 @@ export function useReceiptsGroupedByLBA() {
  */
 export function useReceiptTotals(lbaUnitId: number | undefined) {
   return useQuery({
-    queryKey: ['receipts', 'totals', lbaUnitId],
+    queryKey: lbaUnitId ? QUERY_KEYS.receipts.totals(lbaUnitId) : ['receipts', 'totals'],
     queryFn: () => (lbaUnitId ? getReceiptTotals(lbaUnitId) : null),
     enabled: !!lbaUnitId,
   });
@@ -70,7 +71,7 @@ export function useReceiptTotals(lbaUnitId: number | undefined) {
  */
 export function useDashboardStats() {
   return useQuery({
-    queryKey: ['receipts', 'stats'],
+    queryKey: QUERY_KEYS.receipts.stats,
     queryFn: getDashboardStats,
   });
 }
@@ -83,7 +84,7 @@ export function usePaginatedReceipts(
   pageSize: number = 20
 ) {
   return usePaginatedQuery<ReceiptWithUnit>({
-    queryKey: ['receipts', 'paginated', filters],
+    queryKey: QUERY_KEYS.receipts.paginated(filters) as any,
     queryFn: async ({ limit, offset }) => {
       const result = await getReceiptsPaginated({
         limit,

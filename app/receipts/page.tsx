@@ -12,31 +12,33 @@ import {
 } from '@/hooks';
 import type { ReceiptWithUnit } from '@/types';
 import type { PaginatedResponse } from '@/hooks/usePaginatedQuery';
+import { useTexts } from '@/hooks/useTexts';
 
 const ITEMS_PER_PAGE = 10;
 const PREVIEW_ITEMS_COUNT = 5;
 
 export default function ReceiptsListPage() {
   const router = useRouter();
+  const { t } = useTexts();
   const { showAlert } = useDialog();
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
-    lbaUnitIds: [] as string[],
+    lbaNames: [] as string[],
     crop: '',
   });
 
   // Derive active tab from filters to prevent state desync
   const activeLbaTab = useMemo(() => {
-    if (filters.lbaUnitIds.length === 1) return parseInt(filters.lbaUnitIds[0]);
+    if (filters.lbaNames.length === 1) return filters.lbaNames[0];
     return 'all';
-  }, [filters.lbaUnitIds]);
+  }, [filters.lbaNames]);
   // Track pagination state for each group
   const [groupPages, setGroupPages] = useState<Record<number, number>>({});
-  // Track which group's sheet is open
-  const [openSheetGroupId, setOpenSheetGroupId] = useState<number | null>(null);
+  // Track which group's sheet is open (using unit as ID)
+  const [openSheetGroupName, setOpenSheetGroupName] = useState<string | null>(null);
   // Track pagination state for sheet view
   const [sheetPage, setSheetPage] = useState<number>(1);
 
@@ -84,13 +86,14 @@ export default function ReceiptsListPage() {
       dateFrom?: string;
       dateTo?: string;
       lbaUnitId?: number;
+      lbaName?: string;
       crop?: string;
     } = {};
     if (filters.dateFrom) result.dateFrom = filters.dateFrom;
     if (filters.dateTo) result.dateTo = filters.dateTo;
-    // Only use backend filter if exactly one unit is selected
-    if (filters.lbaUnitIds.length === 1) {
-      result.lbaUnitId = parseInt(filters.lbaUnitIds[0]);
+    // Only use backend filter if exactly one name is selected
+    if (filters.lbaNames.length === 1) {
+      result.lbaName = filters.lbaNames[0];
     }
     if (filters.crop) result.crop = filters.crop;
     return result;
@@ -127,16 +130,15 @@ export default function ReceiptsListPage() {
 
     let allReceipts = pages.flatMap((page) => page.data || []);
 
-    // Apply client-side filtering for multiple LBA unit selections
-    if (filters.lbaUnitIds.length > 1) {
-      const unitIds = filters.lbaUnitIds.map(id => parseInt(id));
+    // Apply client-side filtering for multiple LBA selections
+    if (filters.lbaNames.length > 1) {
       allReceipts = allReceipts.filter((receipt) =>
-        receipt.lba_unit_id && unitIds.includes(receipt.lba_unit_id)
+        receipt.lba_name && filters.lbaNames.includes(receipt.lba_name)
       );
     }
 
     return allReceipts;
-  }, [paginatedData, filters.lbaUnitIds]);
+  }, [paginatedData, filters.lbaNames]);
 
   const loading = viewMode === 'grouped' ? loadingGrouped : loadingList;
 
@@ -169,12 +171,11 @@ export default function ReceiptsListPage() {
     return filtered.filter(group => group.receipts.length > 0);
   }, [filters.crop, filters.dateFrom, filters.dateTo, groupedReceipts]);
 
-  // Final filtered list including unit selections (used for display and total balance)
+  // Final filtered list including name selections (used for display and total balance)
   const filteredGroupedReceipts = useMemo(() => {
-    if (filters.lbaUnitIds.length === 0) return availableGroups;
-    const unitIds = filters.lbaUnitIds.map(id => parseInt(id));
-    return availableGroups.filter((g) => unitIds.includes(g.lba_unit_id));
-  }, [availableGroups, filters.lbaUnitIds]);
+    if (filters.lbaNames.length === 0) return availableGroups;
+    return availableGroups.filter((g) => filters.lbaNames.includes(g.unit));
+  }, [availableGroups, filters.lbaNames]);
 
   // Update scroll buttons when data changes or view switches
   useEffect(() => {
@@ -183,8 +184,8 @@ export default function ReceiptsListPage() {
   }, [checkScroll, availableGroups, viewMode]);
 
   // Get paginated receipts for a specific group
-  const getPaginatedReceiptsForGroup = useCallback((groupReceipts: ReceiptWithUnit[], groupId: number) => {
-    const currentPage = groupPages[groupId] || 1;
+  const getPaginatedReceiptsForGroup = useCallback((groupReceipts: ReceiptWithUnit[], groupName: string) => {
+    const currentPage = groupPages[groupName as any] || 1;
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
     return groupReceipts.slice(startIndex, endIndex);
@@ -207,26 +208,26 @@ export default function ReceiptsListPage() {
   }, []);
 
   // Handle page change for a group
-  const handleGroupPageChange = useCallback((groupId: number, page: number) => {
-    setGroupPages(prev => ({ ...prev, [groupId]: page }));
+  const handleGroupPageChange = useCallback((groupName: string, page: number) => {
+    setGroupPages(prev => ({ ...prev, [groupName]: page }));
   }, []);
 
   // Handle opening sheet for a group
-  const handleOpenSheet = useCallback((groupId: number) => {
-    setOpenSheetGroupId(groupId);
+  const handleOpenSheet = useCallback((groupName: string) => {
+    setOpenSheetGroupName(groupName);
     setSheetPage(1);
   }, []);
 
   // Handle closing sheet
   const handleCloseSheet = useCallback(() => {
-    setOpenSheetGroupId(null);
+    setOpenSheetGroupName(null);
     setSheetPage(1);
   }, []);
 
   // Reset pagination when filters change (but don't reset active unit tab as it's now derived)
   useEffect(() => {
     setGroupPages({});
-    setOpenSheetGroupId(null);
+    setOpenSheetGroupName(null);
     setSheetPage(1);
   }, [filters]);
 
@@ -234,7 +235,7 @@ export default function ReceiptsListPage() {
     setFilters({
       dateFrom: '',
       dateTo: '',
-      lbaUnitIds: [],
+      lbaNames: [],
       crop: '',
     });
   }
@@ -243,7 +244,7 @@ export default function ReceiptsListPage() {
     let count = 0;
     if (filters.dateFrom) count++;
     if (filters.dateTo) count++;
-    if (filters.lbaUnitIds.length > 0) count++;
+    if (filters.lbaNames.length > 0) count++;
     if (filters.crop) count++;
     return count;
   }, [filters]);
@@ -252,13 +253,15 @@ export default function ReceiptsListPage() {
     return filteredGroupedReceipts.reduce((sum, g) => sum + (g.outstanding_balance || 0), 0);
   }, [filteredGroupedReceipts]);
 
-  // Prepare LBA unit options for multi-select
-  const lbaUnitOptions: MultiSelectOption[] = useMemo(() => {
-    return lbaUnits.map((unit) => ({
-      value: unit.id?.toString() || '',
-      label: `${unit.unit_name} (${unit.lba_code})`,
+  // Prepare LBA Name options for multi-select
+  const lbaNameOptions: MultiSelectOption[] = useMemo(() => {
+    // Get unique LBA Names from available groups
+    const names = Array.from(new Set(availableGroups.map(g => g.unit)));
+    return names.map((name) => ({
+      value: name,
+      label: name,
     }));
-  }, [lbaUnits]);
+  }, [availableGroups]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-GH', {
@@ -284,9 +287,9 @@ export default function ReceiptsListPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Stock Cards</h1>
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">{t('receiptList.title', 'Stock Cards')}</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage and track inventory across all LBAs.
+            {t('receiptList.subtitle', 'Manage and track inventory across all LBAs.')}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -298,7 +301,7 @@ export default function ReceiptsListPage() {
               className="px-3"
             >
               <LayoutGrid className="w-4 h-4 mr-2" />
-              Grouped
+              {t('receiptList.grouped', 'Grouped')}
             </Button>
             <Button
               onClick={() => setViewMode('list')}
@@ -307,7 +310,7 @@ export default function ReceiptsListPage() {
               className="px-3"
             >
               <List className="w-4 h-4 mr-2" />
-              List
+              {t('receiptList.list', 'List')}
             </Button>
           </div>
           <Button
@@ -316,7 +319,7 @@ export default function ReceiptsListPage() {
             className="relative shadow-sm"
           >
             <SlidersHorizontal className="w-4 h-4 mr-2" />
-            Filter
+            {t('receiptList.filter', 'Filter')}
             {activeFilterCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
                 {activeFilterCount}
@@ -329,7 +332,7 @@ export default function ReceiptsListPage() {
             className="shadow-md"
           >
             <Plus className="w-4 h-4 mr-2" />
-            New Entry
+            {t('receiptList.newEntry', 'New Entry')}
           </Button>
         </div>
       </div>
@@ -394,7 +397,7 @@ export default function ReceiptsListPage() {
             {/* All Units Tab */}
             <button
               onClick={() => {
-                setFilters(prev => ({ ...prev, lbaUnitIds: [] }));
+                setFilters(prev => ({ ...prev, lbaNames: [] }));
               }}
               className={`flex-shrink-0 w-56 p-4 rounded-xl border-2 transition-all text-left ${activeLbaTab === 'all'
                 ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100'
@@ -402,46 +405,53 @@ export default function ReceiptsListPage() {
                 }`}
             >
               <div className={`text-xs font-medium uppercase tracking-wider mb-1 flex justify-between ${activeLbaTab === 'all' ? 'text-blue-100' : 'text-gray-400'}`}>
-                <span>Overview</span>
+                <span>{t('receiptList.overview', 'Overview')}</span>
                 <span>{availableGroups.length} LBAs</span>
               </div>
-              <div className="font-bold text-lg">All LBAs</div>
+              <div className="font-bold text-lg">{t('receiptList.allLBAs', 'All LBAs')}</div>
               <div className={`mt-1 font-semibold ${activeLbaTab === 'all' ? 'text-blue-50' : 'text-blue-600'}`}>
                 {formatCurrency(totalOutstandingBalance)}
               </div>
             </button>
 
             {/* LBA Unit Tabs */}
-            {availableGroups.map((group) => (
-              <button
-                key={group.lba_unit_id}
-                onClick={() => {
-                  setFilters(prev => ({ ...prev, lbaUnitIds: [group.lba_unit_id.toString()] }));
-                }}
-                className={`flex-shrink-0 w-56 p-4 rounded-xl border-2 transition-all text-left ${activeLbaTab === group.lba_unit_id
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100'
-                  : 'bg-white border-gray-100 text-gray-900 hover:border-gray-200'
-                  }`}
-              >
-                <div className={`text-xs font-medium uppercase tracking-wider mb-1 flex justify-between ${activeLbaTab === group.lba_unit_id ? 'text-blue-100' : 'text-gray-400'}`}>
-                  <span>{group.lba_code}</span>
-                  <span>{group.receipts.length} entries</span>
-                </div>
-                <div className="font-bold truncate text-lg">{group.unit_name}</div>
-                <div className={`mt-1 font-semibold ${activeLbaTab === group.lba_unit_id ? 'text-white' : 'text-blue-600'}`}>
-                  {formatCurrency(group.outstanding_balance)}
-                </div>
-              </button>
-            ))}
+            {
+              availableGroups.map((group) => {
+                return (
+                  <button
+                    key={group.unit}
+                    onClick={() => {
+                      setFilters(prev => ({ ...prev, lbaNames: [group.unit] }));
+                    }}
+                    className={`flex-shrink-0 w-56 p-4 rounded-xl border-2 transition-all text-left ${activeLbaTab === group.unit
+                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100'
+                      : 'bg-white border-gray-100 text-gray-900 hover:border-gray-200'
+                      }`}
+                  >
+                    <div className="font-bold text-lg truncate">
+                      {group.lba_name}
+                    </div>
+                    <div className={`text-xs font-medium uppercase tracking-wider mb-1 flex justify-start ${activeLbaTab === group.unit ? 'text-blue-100' : 'text-gray-400'}`}>
+                      {/* <span className="font-bold">{t('lbaUnit.lbaName', 'LBA Name')}</span> */}
+                      <span>{group.receipts.length} entries</span>
+                    </div>
+                    <div className={`mt-1 font-semibold ${activeLbaTab === group.unit ? 'text-white' : 'text-blue-600'}`}>
+                      {formatCurrency(group.outstanding_balance)}
+                    </div>
+                  </button>
+                )
+              })
+            }
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* Filter Sheet */}
       <Sheet
         isOpen={isFilterSheetOpen}
         onClose={() => setIsFilterSheetOpen(false)}
-        title="Filter Stock Cards"
+        title={t('receiptList.filterTitle', 'Filter Stock Cards')}
         maxWidth="md"
       >
         <div className="flex flex-col h-full">
@@ -478,9 +488,9 @@ export default function ReceiptsListPage() {
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-gray-900">LBAs</Label>
               <MultiSelectCombobox
-                options={lbaUnitOptions}
-                selectedValues={filters.lbaUnitIds}
-                onChange={(values) => setFilters({ ...filters, lbaUnitIds: values })}
+                options={lbaNameOptions}
+                selectedValues={filters.lbaNames}
+                onChange={(values) => setFilters({ ...filters, lbaNames: values })}
                 placeholder="Select one or more LBAs..."
               />
             </div>
@@ -508,7 +518,7 @@ export default function ReceiptsListPage() {
               className="flex-1"
               disabled={activeFilterCount === 0}
             >
-              Reset All
+              {t('receiptList.clearFilters', 'Reset All')}
             </Button>
             <Button
               type="button"
@@ -523,285 +533,394 @@ export default function ReceiptsListPage() {
       </Sheet>
 
       {/* Active Filter Chips (Inline Indicator) */}
-      {activeFilterCount > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-6">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Active Filters:</span>
-          {filters.dateFrom && (
-            <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
-              From: {filters.dateFrom}
-              <button onClick={() => setFilters({ ...filters, dateFrom: '' })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
-            </div>
-          )}
-          {filters.dateTo && (
-            <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
-              To: {filters.dateTo}
-              <button onClick={() => setFilters({ ...filters, dateTo: '' })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
-            </div>
-          )}
-          {filters.lbaUnitIds.length > 0 && (
-            <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
-              {filters.lbaUnitIds.length} LBAs
-              <button onClick={() => setFilters({ ...filters, lbaUnitIds: [] })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
-            </div>
-          )}
-          {filters.crop && (
-            <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
-              Crop: {filters.crop}
-              <button onClick={() => setFilters({ ...filters, crop: '' })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
-            </div>
-          )}
-        </div>
-      )}
+      {
+        activeFilterCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Active Filters:</span>
+            {filters.dateFrom && (
+              <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
+                From: {filters.dateFrom}
+                <button onClick={() => setFilters({ ...filters, dateFrom: '' })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+            {filters.dateTo && (
+              <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
+                To: {filters.dateTo}
+                <button onClick={() => setFilters({ ...filters, dateTo: '' })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+            {filters.lbaNames.length > 0 && (
+              <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
+                {filters.lbaNames.length} LBAs
+                <button onClick={() => setFilters({ ...filters, lbaNames: [] })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+            {filters.crop && (
+              <div className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium border border-blue-100">
+                Crop: {filters.crop}
+                <button onClick={() => setFilters({ ...filters, crop: '' })} className="ml-2 hover:text-blue-900"><X className="w-3 h-3" /></button>
+              </div>
+            )}
+          </div>
+        )
+      }
 
       {/* Receipts Display */}
-      {viewMode === 'grouped' ? (
-        <div className="space-y-6">
-          {filteredGroupedReceipts.length === 0 ? (
-            <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-12 text-center">
-              <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Search className="w-8 h-8 text-gray-400" />
+      {
+        viewMode === 'grouped' ? (
+          <div className="space-y-6">
+            {filteredGroupedReceipts.length === 0 ? (
+              <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-12 text-center">
+                <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Search className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">{t('receiptList.noStockCards', 'No stock cards found')}</h3>
+                <p className="text-gray-500 mt-1 max-w-xs mx-auto">
+                  {groupedReceipts.length === 0 ? t('receiptList.noStockCardsDesc', 'Create your first stock card to see it here.') : t('receiptList.noStockCardsFilterDesc', 'Try adjusting your filters to find what you\'re looking for.')}
+                </p>
+                {activeFilterCount > 0 && (
+                  <Button
+                    onClick={clearFilters}
+                    variant="outline"
+                    size="sm"
+                    className="mt-6"
+                  >
+                    {t('receiptList.clearFilters', 'Clear all filters')}
+                  </Button>
+                )}
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">No stock cards found</h3>
-              <p className="text-gray-500 mt-1 max-w-xs mx-auto">
-                {groupedReceipts.length === 0 ? 'Create your first stock card to see it here.' : 'Try adjusting your filters to find what you\'re looking for.'}
-              </p>
-              {activeFilterCount > 0 && (
-                <Button
-                  onClick={clearFilters}
-                  variant="outline"
-                  size="sm"
-                  className="mt-6"
-                >
-                  Clear all filters
-                </Button>
-              )}
-            </div>
-          ) : (
-            filteredGroupedReceipts
-              .filter(group => activeLbaTab === 'all' || group.lba_unit_id === activeLbaTab)
-              .map((group) => {
-                const groupId = group.lba_unit_id;
-                // Ensure receipts is an array
-                const groupReceipts = Array.isArray(group.receipts) ? group.receipts : [];
-                // Show "View All" only if there are more than 5 items
-                // Always display at least 5 rows if available
-                const hasMoreThanFive = groupReceipts.length > PREVIEW_ITEMS_COUNT;
-                const displayReceipts = hasMoreThanFive
-                  ? getPreviewReceiptsForGroup(groupReceipts) // Show exactly 5
-                  : groupReceipts; // Show all if 5 or fewer
+            ) : (
+              filteredGroupedReceipts
+                .filter(group => activeLbaTab === 'all' || group.unit === activeLbaTab)
+                .map((group) => {
+                  const groupName = group.unit;
+                  // Ensure receipts is an array
+                  const groupReceipts = Array.isArray(group.receipts) ? group.receipts : [];
+                  // Show "View All" only if there are more than 5 items
+                  // Always display at least 5 rows if available
+                  const hasMoreThanFive = groupReceipts.length > PREVIEW_ITEMS_COUNT;
+                  const displayReceipts = hasMoreThanFive
+                    ? getPreviewReceiptsForGroup(groupReceipts) // Show exactly 5
+                    : groupReceipts; // Show all if 5 or fewer
 
-                return (
-                  <div key={groupId} className="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden ring-1 ring-black ring-opacity-5">
-                    {/* Group Header */}
-                    <div className="bg-gray-50 px-6 py-5 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-bold text-gray-900">
-                              {group.unit_name}
-                            </h3>
-                            <span className="bg-gray-200 text-gray-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                              {group.lba_code}
-                            </span>
+                  return (
+                    <div key={groupName} className="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden ring-1 ring-black ring-opacity-5">
+                      {/* Group Header */}
+                      <div className="bg-gray-50 px-6 py-5 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-lg font-bold text-gray-900">
+                                {group.unit}
+                              </h3>
+                            </div>
+                            {/* {group.crop && group.season && (
+                              <p className="text-sm text-gray-500 mt-0.5">
+                                {group.crop} • {group.season}
+                              </p>
+                            )} */}
                           </div>
-                          {group.crop && group.season && (
-                            <p className="text-sm text-gray-500 mt-0.5">
-                              {group.crop} • {group.season}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Balance</p>
-                          <div className={`text-2xl font-black tracking-tight ${group.outstanding_balance >= 0 ? 'text-green-600' : 'text-red-600'
-                            }`}>
-                            {formatCurrency(group.outstanding_balance)}
+                          <div className="text-right">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Balance</p>
+                            <div className={`text-2xl font-black tracking-tight ${group.outstanding_balance >= 0 ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                              {formatCurrency(group.outstanding_balance)}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="relative">
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          {/* Table Header */}
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Date
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                WHR Number
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Description
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Previous Balance
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Credit
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Debit
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Balance
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Bags / MTS
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {displayReceipts.length === 0 ? (
+                      <div className="relative">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            {/* Table Header */}
+                            <thead className="bg-gray-50">
                               <tr>
-                                <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
-                                  No receipts found
-                                </td>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Date
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  WHR Number
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  {t('lbaUnit.lbaName')}
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  {t('lbaUnit.lbaCode')}
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Crop
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Season
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Unit Head
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  QCI Name
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Description
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Previous Balance
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Credit
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Debit
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Balance
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Weight
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Bags
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  MTS
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Signature
+                                </th>
                               </tr>
-                            ) : (
-                              displayReceipts.map((receipt, index) => (
-                                <tr
-                                  key={receipt.id || `receipt-${groupId}-${index}`}
-                                  className="hover:bg-gray-50 cursor-pointer"
-                                  onClick={() => receipt.id && router.push(`/receipts/view?id=${receipt.id}`)}
-                                >
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {receipt.date}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {receipt.whr_number}
-                                  </td>
-                                  <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                                    {receipt.description}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {formatCurrency(receipt.previous_balance || 0)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {formatCurrency(receipt.credit_amount)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {formatCurrency(receipt.debit_amount)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {formatCurrency(receipt.balance_ghc)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {receipt.bags} / {receipt.mts}
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {displayReceipts.length === 0 ? (
+                                <tr>
+                                  <td colSpan={17} className="px-6 py-4 text-center text-sm text-gray-500">
+                                    No receipts found
                                   </td>
                                 </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                      {/* View All Button */}
-                      {hasMoreThanFive && (
-                        <div className="px-6 py-4 border-t border-gray-200 text-center">
-                          <Button
-                            onClick={() => handleOpenSheet(groupId)}
-                            variant="primary"
-                            size="sm"
-                          >
-                            View All ({groupReceipts.length} stock cards)
-                          </Button>
+                              ) : (
+                                displayReceipts.map((receipt, index) => (
+                                  <tr
+                                    key={receipt.id || `receipt-${groupName}-${index}`}
+                                    className="hover:bg-gray-50 cursor-pointer"
+                                    onClick={() => receipt.id && router.push(`/receipts/view?id=${receipt.id}`)}
+                                  >
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                      {receipt.date}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                      {receipt.whr_number}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.lba_name}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.lba_code}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.crop}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.season}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.unit_head}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.qci_name}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                                      {receipt.description}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {formatCurrency(receipt.previous_balance || 0)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                      {formatCurrency(receipt.credit_amount)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                      {formatCurrency(receipt.debit_amount)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                      {formatCurrency(receipt.balance_ghc)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.weight}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.bags}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.mts}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                      {receipt.signature}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
                         </div>
-                      )}
+                        {/* View All Button */}
+                        {hasMoreThanFive && (
+                          <div className="px-6 py-4 border-t border-gray-200 text-center">
+                            <Button
+                              onClick={() => handleOpenSheet(groupName)}
+                              variant="primary"
+                              size="sm"
+                            >
+                              {t('receiptList.viewAll', 'View All')} ({groupReceipts.length} stock cards)
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-          )}
-        </div>
-      ) : (
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          {receipts.length === 0 && !loadingList ? (
-            <div className="px-4 py-5 sm:px-6 text-center text-gray-500">
-              No stock cards found. Create your first stock card to get started.
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        WHR Number
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        LBA
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Description
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Credit
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Debit
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Balance
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Bags / MTS
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {receipts.map((receipt) => (
-                      <tr
-                        key={receipt.id}
-                        className="hover:bg-gray-50 cursor-pointer"
-                        onClick={() => receipt.id && router.push(`/receipts/view?id=${receipt.id}`)}
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {receipt.date}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {receipt.whr_number}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {receipt.unit_name} ({receipt.lba_code})
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                          {receipt.description}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatCurrency(receipt.credit_amount)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatCurrency(receipt.debit_amount)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {formatCurrency(receipt.balance_ghc)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {receipt.bags} / {receipt.mts}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  );
+                })
+            )}
+          </div>
+        ) : (
+          <div className="bg-white shadow overflow-hidden sm:rounded-md">
+            {receipts.length === 0 && !loadingList ? (
+              <div className="px-4 py-5 sm:px-6 text-center text-gray-500">
+                No stock cards found. Create your first stock card to get started.
               </div>
-              {hasNextPage && (
-                <div className="px-4 py-4 border-t border-gray-200 text-center">
-                  <Button
-                    onClick={() => fetchNextPage()}
-                    disabled={isFetchingNextPage}
-                    variant="primary"
-                  >
-                    {isFetchingNextPage ? 'Loading...' : 'Load More'}
-                  </Button>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          WHR Number
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {t('lbaUnit.lbaName')}
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {t('lbaUnit.lbaCode')}
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Crop
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Season
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Unit Head
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          QCI Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Description
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Previous Balance
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Credit
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Debit
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Balance
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Weight
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Bags
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          MTS
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Signature
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {receipts.map((receipt) => (
+                        <tr
+                          key={receipt.id}
+                          className="hover:bg-gray-50 cursor-pointer"
+                          onClick={() => receipt.id && router.push(`/receipts/view?id=${receipt.id}`)}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {receipt.date}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {receipt.whr_number}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.lba_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.lba_code}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.crop}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.season}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.unit_head}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.qci_name}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                            {receipt.description}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {formatCurrency(receipt.previous_balance || 0)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {formatCurrency(receipt.credit_amount)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {formatCurrency(receipt.debit_amount)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {formatCurrency(receipt.balance_ghc)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.weight}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.bags}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.mts}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {receipt.signature}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                {hasNextPage && (
+                  <div className="px-4 py-4 border-t border-gray-200 text-center">
+                    <Button
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
+                      variant="primary"
+                    >
+                      {isFetchingNextPage ? t('common.loading', 'Loading...') : t('receiptList.loadMore', 'Load More')}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )
+      }
 
       <div className="mt-8 text-sm text-gray-400 flex items-center justify-center border-t border-gray-100 pt-8">
         {viewMode === 'grouped' ? (
@@ -829,102 +948,126 @@ export default function ReceiptsListPage() {
       </div>
 
       {/* Sheet for View All */}
-      {openSheetGroupId !== null && (() => {
-        const group = filteredGroupedReceipts.find(g => g.lba_unit_id === openSheetGroupId);
-        if (!group) return null;
+      {
+        openSheetGroupName !== null && (() => {
+          const group = filteredGroupedReceipts.find(g => g.unit === openSheetGroupName);
+          if (!group) return null;
 
-        const sheetReceipts = getSheetPaginatedReceipts(group.receipts);
-        const totalPages = getTotalPagesForGroup(group.receipts);
+          const sheetReceipts = getSheetPaginatedReceipts(group.receipts);
+          const totalPages = getTotalPagesForGroup(group.receipts);
 
-        return (
-          <Sheet
-            isOpen={true}
-            onClose={handleCloseSheet}
-            title={`${group.unit_name} entries`}
-            maxWidth="full"
-          >
-            <div className="space-y-6">
-              {/* Summary Card in Sheet */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    {group.crop && group.season && (
-                      <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">
-                        {group.crop} • {group.season}
+          return (
+            <Sheet
+              isOpen={true}
+              onClose={handleCloseSheet}
+              title={`${group.unit} entries`}
+              maxWidth="full"
+            >
+              <div className="space-y-6">
+                {/* Summary Card in Sheet */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      {group.crop && group.season && (
+                        <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">
+                          {group.crop} • {group.season}
+                        </p>
+                      )}
+                      <h3 className="text-xl font-bold text-gray-900">{group.unit}</h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Total of {group.receipts.length} entries found
                       </p>
-                    )}
-                    <h3 className="text-xl font-bold text-gray-900">{group.unit_name}</h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Total of {group.receipts.length} entries found
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Net Balance</p>
-                    <div className={`text-3xl font-black tracking-tight ${group.outstanding_balance >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                      {formatCurrency(group.outstanding_balance)}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Net Balance</p>
+                      <div className={`text-3xl font-black tracking-tight ${group.outstanding_balance >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                        {formatCurrency(group.outstanding_balance)}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Table */}
-              <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Date</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">WHR No.</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Description</th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Credit</th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Debit</th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {sheetReceipts.map((receipt) => (
-                      <tr
-                        key={receipt.id}
-                        className="hover:bg-gray-50 cursor-pointer transition-colors"
-                        onClick={() => {
-                          if (receipt.id) {
-                            handleCloseSheet();
-                            router.push(`/receipts/view?id=${receipt.id}`);
-                          }
-                        }}
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{receipt.date}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{receipt.whr_number}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{receipt.description}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{formatCurrency(receipt.credit_amount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{formatCurrency(receipt.debit_amount)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-gray-900">{formatCurrency(receipt.balance_ghc)}</td>
+                {/* Table */}
+                <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Date</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">WHR No.</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">{t('lbaUnit.lbaName')}</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">{t('lbaUnit.lbaCode')}</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Crop</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Season</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Unit Head</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">QCI Name</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Description</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Previous Balance</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Credit</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Debit</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Balance</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Weight</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">Bags</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">MTS</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">Signature</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Load More */}
-              {sheetPage < totalPages && (
-                <div className="pt-4 flex flex-col items-center">
-                  <p className="text-xs text-gray-500 mb-4 font-medium uppercase tracking-widest">
-                    Showing {sheetReceipts.length} of {group.receipts.length}
-                  </p>
-                  <Button
-                    onClick={() => setSheetPage(sheetPage + 1)}
-                    variant="outline"
-                    size="sm"
-                    className="px-8"
-                  >
-                    Load More Entries
-                  </Button>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {sheetReceipts.map((receipt) => (
+                        <tr
+                          key={receipt.id}
+                          className="hover:bg-gray-50 cursor-pointer transition-colors"
+                          onClick={() => {
+                            if (receipt.id) {
+                              handleCloseSheet();
+                              router.push(`/receipts/view?id=${receipt.id}`);
+                            }
+                          }}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{receipt.date}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{receipt.whr_number}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{receipt.lba_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.lba_code}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.crop}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.season}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.unit_head}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.qci_name}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{receipt.description}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(receipt.previous_balance || 0)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{formatCurrency(receipt.credit_amount)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{formatCurrency(receipt.debit_amount)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-gray-900">{formatCurrency(receipt.balance_ghc)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{receipt.weight}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{receipt.bags}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{receipt.mts}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{receipt.signature}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </div>
-          </Sheet>
-        );
-      })()}
-    </div>
+
+                {/* Load More */}
+                {sheetPage < totalPages && (
+                  <div className="pt-4 flex flex-col items-center">
+                    <p className="text-xs text-gray-500 mb-4 font-medium uppercase tracking-widest">
+                      Showing {sheetReceipts.length} of {group.receipts.length}
+                    </p>
+                    <Button
+                      onClick={() => setSheetPage(sheetPage + 1)}
+                      variant="outline"
+                      size="sm"
+                      className="px-8"
+                    >
+                      Load More Entries
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </Sheet>
+          );
+        })()
+      }
+    </div >
   );
 }

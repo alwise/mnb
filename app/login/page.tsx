@@ -6,9 +6,11 @@ import Link from 'next/link';
 import { login, setCurrentUser } from '@/lib/auth';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input, Button, useDialog } from '@/components/ui';
+import { useTexts } from '@/hooks/useTexts';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useTexts();
   const { showAlert } = useDialog();
   const { login: setAuthUser, user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -36,7 +38,7 @@ export default function LoginPage() {
     e.preventDefault();
 
     if (!formData.email || !formData.password) {
-      await showAlert('Please fill in all fields.');
+      await showAlert(t('auth.fillAllFields', 'Please fill in all fields.'));
       return;
     }
 
@@ -46,15 +48,15 @@ export default function LoginPage() {
       if (user) {
         setCurrentUser(user.id);
         setAuthUser(user);
-        await showAlert('Login successful! Redirecting...');
+        await showAlert(t('auth.loginSuccess', 'Login successful! Redirecting...'));
         router.push('/dashboard');
       } else {
-        await showAlert('Invalid email or password.');
+        await showAlert(t('auth.invalidCredentials', 'Invalid email or password.'));
       }
     } catch (error) {
       console.error('Login error:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await showAlert(`Error logging in: ${errorMessage}`);
+      await showAlert(`${t('auth.loginError', 'Error logging in')}: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -65,17 +67,17 @@ export default function LoginPage() {
       <div className="max-w-md w-full bg-white shadow-xl rounded-2xl p-8 md:p-10 border border-gray-200">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2 text-center">
-            Sign In
+            {t('auth.signInTitle', 'Sign In')}
           </h1>
           <p className="text-sm text-gray-600 text-center">
-            Enter your credentials to access your account
+            {t('auth.signInDesc', 'Enter your credentials to access your account')}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <Input
             type="email"
-            label="Email"
+            label={t('auth.email', 'Email')}
             required
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -83,7 +85,7 @@ export default function LoginPage() {
 
           <Input
             type="password"
-            label="Password"
+            label={t('auth.password', 'Password')}
             required
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -96,21 +98,21 @@ export default function LoginPage() {
             isLoading={loading}
             disabled={loading}
           >
-            Sign In
+            {t('auth.signInTitle', 'Sign In')}
           </Button>
         </form>
 
         <div className="mt-6 pt-4 border-t border-gray-200 space-y-3">
           <div className="text-center">
             <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors">
-              Forgot your password?
+              {t('auth.forgotPassword', 'Forgot your password?')}
             </Link>
           </div>
           <div className="text-center">
             <p className="text-sm text-gray-600">
-              Don&apos;t have an account?{' '}
+              {t('auth.noAccount', "Don't have an account?")}{' '}
               <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-semibold transition-colors">
-                Create one
+                {t('auth.createOne', 'Create one')}
               </Link>
             </p>
           </div>
