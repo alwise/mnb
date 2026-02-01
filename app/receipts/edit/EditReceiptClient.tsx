@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AutocompleteInput from '@/components/AutocompleteInput';
 import { Input, Textarea, Button, ImagePicker, useDialog } from '@/components/ui';
@@ -11,7 +11,6 @@ import {
   updateLBAUnit,
   getPreviousBalance,
   searchLBAUnits,
-  searchWHRNumbers,
   getReceiptTotals,
   createLBAUnit,
 } from '@/lib/receipts';
@@ -31,6 +30,16 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Track original receipt values to avoid doubling cumulative totals
+  const originalValues = useRef<{
+    lba_unit_id: string;
+    credit_amount: number;
+    debit_amount: number;
+    mts: number;
+    bags: number;
+  } | null>(null);
+
   const [showUnitForm, setShowUnitForm] = useState(false);
   const [lbaUnitDisplay, setLbaUnitDisplay] = useState('');
   const [selectedLBAUnit, setSelectedLBAUnit] = useState<LBAUnit | null>(null);
@@ -146,7 +155,7 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
   }
 
   const loadPreviousBalance = useCallback(async () => {
-    if (!formData.lba_unit_id || !formData.date) return;
+    if (loading || !formData.lba_unit_id || !formData.date) return;
     try {
       await new Promise(resolve => setTimeout(resolve, 100));
       const prevBalance = await getPreviousBalance(parseInt(formData.lba_unit_id), formData.date);
@@ -155,17 +164,28 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
       await new Promise(resolve => setTimeout(resolve, 100));
       const totals = await getReceiptTotals(parseInt(formData.lba_unit_id));
       if (totals) {
+        let { cumulative_credit, cumulative_debit, cumulative_mts, cumulative_bags } = totals;
+
+        // If we are editing the same LBA unit, subtract this receipt's values 
+        // because they are already included in the totals from the database
+        if (originalValues.current && formData.lba_unit_id === originalValues.current.lba_unit_id) {
+          cumulative_credit = (cumulative_credit || 0) - originalValues.current.credit_amount;
+          cumulative_debit = (cumulative_debit || 0) - originalValues.current.debit_amount;
+          cumulative_mts = (cumulative_mts || 0) - originalValues.current.mts;
+          cumulative_bags = (cumulative_bags || 0) - originalValues.current.bags;
+        }
+
         setCumulativeTotals({
-          cumulative_credit: totals.cumulative_credit || 0,
-          cumulative_debit: totals.cumulative_debit || 0,
-          cumulative_mts: totals.cumulative_mts || 0,
-          cumulative_bags: totals.cumulative_bags || 0,
+          cumulative_credit: cumulative_credit || 0,
+          cumulative_debit: cumulative_debit || 0,
+          cumulative_mts: cumulative_mts || 0,
+          cumulative_bags: cumulative_bags || 0,
         });
       }
     } catch (error) {
       console.error('Error loading previous balance:', error);
     }
-  }, [formData.lba_unit_id, formData.date]);
+  }, [formData.lba_unit_id, formData.date, loading]);
 
   useEffect(() => {
     if (formData.lba_unit_id && formData.date) {
@@ -191,6 +211,15 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
 
       console.log('Receipt:', receipt);
       console.log('Receipt items:', receipt.items);
+
+      // Store original values for cumulative calculations
+      originalValues.current = {
+        lba_unit_id: receipt.lba_unit_id.toString(),
+        credit_amount: receipt.credit_amount,
+        debit_amount: receipt.debit_amount,
+        mts: receipt.mts,
+        bags: receipt.bags,
+      };
 
       // Set form data
       setFormData({
@@ -883,13 +912,12 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
-                            <AutocompleteInput<string>
+                            <Input
+                              type="text"
                               value={item.whr_number}
-                              onChange={(value) => updateItem(index, 'whr_number', value)}
-                              fetchSuggestions={searchWHRNumbers}
-                              getDisplayValue={(item) => item}
-                              placeholder=""
-                              className="block w-full h-full min-h-full text-[10px] text-center border-0 focus:ring-0 rounded-none"
+                              onChange={(e) => updateItem(index, 'whr_number', e.target.value)}
+                              autoComplete="off"
+                              className="w-full h-full min-h-full text-[10px] p-1 text-center border-0 focus:ring-0 rounded-none"
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">

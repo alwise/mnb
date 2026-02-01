@@ -8,7 +8,6 @@ import {
   createReceipt,
   getPreviousBalance,
   searchLBAUnits,
-  searchWHRNumbers,
   getReceiptTotals,
 } from '@/lib/receipts';
 import { createLBAUnit } from '@/lib/receipts';
@@ -719,13 +718,12 @@ export default function CreateStockCardPage() {
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
-                            <AutocompleteInput<string>
+                            <Input
+                              type="text"
                               value={item.whr_number}
-                              onChange={(value) => updateItem(index, 'whr_number', value)}
-                              fetchSuggestions={searchWHRNumbers}
-                              getDisplayValue={(item) => item}
-                              placeholder=""
-                              className="block w-full h-full min-h-full text-[10px] text-center border-0 focus:ring-0 rounded-none"
+                              onChange={(e) => updateItem(index, 'whr_number', e.target.value)}
+                              autoComplete="off"
+                              className="w-full h-full min-h-full text-[10px] p-1 text-center border-0 focus:ring-0 rounded-none"
                             />
                           </td>
                           <td className="border border-blue-600 p-0 h-px">
