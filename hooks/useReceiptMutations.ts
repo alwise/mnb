@@ -11,11 +11,13 @@ import type {
 } from '@/types';
 import { useMutation } from './useMutation';
 import { QUERY_KEYS } from '@/lib/queryKeys';
+import { useAuth } from '@/contexts/AuthContext';
 
 /**
  * Hook to create a new receipt
  */
 export function useCreateReceipt() {
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async (data: {
       receipt: Omit<Receipt, 'id' | 'created_at'>;
@@ -23,13 +25,15 @@ export function useCreateReceipt() {
     }) => {
       return await createReceipt(data.receipt, data.items);
     },
-    invalidateQueries: [
-      QUERY_KEYS.receipts.list() as any,
-      QUERY_KEYS.receipts.paginated() as any,
-      QUERY_KEYS.receipts.grouped as any,
-      QUERY_KEYS.receipts.stats as any,
-      ['receipts', 'totals'] as any,
-    ],
+    invalidateQueries: user?.id
+      ? [
+          QUERY_KEYS.receipts.list(user.id) as any,
+          QUERY_KEYS.receipts.paginated(user.id) as any,
+          QUERY_KEYS.receipts.grouped(user.id) as any,
+          QUERY_KEYS.receipts.stats(user.id) as any,
+          ['receipts', user.id, 'totals'] as any,
+        ]
+      : [],
   });
 }
 
@@ -37,6 +41,7 @@ export function useCreateReceipt() {
  * Hook to update an existing receipt
  */
 export function useUpdateReceipt() {
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async (data: {
       id: number;
@@ -45,13 +50,15 @@ export function useUpdateReceipt() {
     }) => {
       return await updateReceipt(data.id, data.receipt, data.items);
     },
-    invalidateQueries: [
-      QUERY_KEYS.receipts.list() as any,
-      QUERY_KEYS.receipts.paginated() as any,
-      QUERY_KEYS.receipts.grouped as any,
-      QUERY_KEYS.receipts.stats as any,
-      ['receipts', 'totals'] as any,
-    ],
+    invalidateQueries: user?.id
+      ? [
+          QUERY_KEYS.receipts.list(user.id) as any,
+          QUERY_KEYS.receipts.paginated(user.id) as any,
+          QUERY_KEYS.receipts.grouped(user.id) as any,
+          QUERY_KEYS.receipts.stats(user.id) as any,
+          ['receipts', user.id, 'totals'] as any,
+        ]
+      : [],
   });
 }
 
@@ -59,17 +66,20 @@ export function useUpdateReceipt() {
  * Hook to delete a receipt
  */
 export function useDeleteReceipt() {
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async (id: number) => {
       return await deleteReceipt(id);
     },
-    invalidateQueries: [
-      QUERY_KEYS.receipts.list() as any,
-      QUERY_KEYS.receipts.paginated() as any,
-      QUERY_KEYS.receipts.grouped as any,
-      QUERY_KEYS.receipts.stats as any,
-      ['receipts', 'totals'] as any,
-    ],
+    invalidateQueries: user?.id
+      ? [
+          QUERY_KEYS.receipts.list(user.id) as any,
+          QUERY_KEYS.receipts.paginated(user.id) as any,
+          QUERY_KEYS.receipts.grouped(user.id) as any,
+          QUERY_KEYS.receipts.stats(user.id) as any,
+          ['receipts', user.id, 'totals'] as any,
+        ]
+      : [],
   });
 }
 
@@ -77,13 +87,16 @@ export function useDeleteReceipt() {
  * Hook to create a new LBA unit
  */
 export function useCreateLBAUnit() {
+  const { user } = useAuth();
   return useMutation({
     mutationFn: async (unit: Omit<LBAUnit, 'id' | 'created_at'>) => {
       return await createLBAUnit(unit);
     },
-    invalidateQueries: [
-      QUERY_KEYS.lbaUnits.list() as any,
-      QUERY_KEYS.lbaUnits.paginated() as any,
-    ],
+    invalidateQueries: user?.id
+      ? [
+          QUERY_KEYS.lbaUnits.list(user.id) as any,
+          QUERY_KEYS.lbaUnits.paginated(user.id) as any,
+        ]
+      : [],
   });
 }

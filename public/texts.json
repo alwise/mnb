@@ -43,6 +43,8 @@
     "updateSuccess": "Company settings updated successfully!",
     "updateError": "Error updating company settings.",
     "backupTitle": "Backup Data",
+    "backupMyData": "Backup My Data",
+    "backupAll": "Backup All",
     "restoreTitle": "Restore Data",
     "deleteAccount": "Delete Account",
     "resetAll": "Reset All Data",

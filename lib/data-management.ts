@@ -1,9 +1,15 @@
-import { getDatabase, deleteDatabase } from './db';
+import Database from '@tauri-apps/plugin-sql';
+import {
+  getDatabase,
+  deleteDatabase,
+  getDefaultDatabase,
+  getUserDatabasePath,
+  getCurrentUserDatabasePath,
+} from './db';
 import { isTauri } from './utils';
 import { logout } from './auth';
-import Database from '@tauri-apps/plugin-sql';
 
-const DB_NAME = 'lba_receipts.db';
+export type BackupType = 'my-data' | 'all';
 
 export interface BackupData {
   version: string;
@@ -17,22 +23,108 @@ export interface BackupData {
   };
 }
 
+/** Sanitize email for use as filename (e.g. user@example.com -> user_at_example_com) */
+function sanitizeEmailForFilename(email: string): string {
+  return email.replace(/@/g, '_at_').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+/** Read a file by path and return base64, or null if not found */
+async function readFileAsBase64(
+  readFile: (path: string, opts: { baseDir: number }) => Promise<Uint8Array>,
+  path: string,
+  BaseDirectory: { AppData: number },
+): Promise<string | null> {
+  try {
+    const fileData = await readFile(path, { baseDir: BaseDirectory.AppData });
+    return btoa(String.fromCharCode(...fileData));
+  } catch {
+    return null;
+  }
+}
+
+/** Collect files for a specific user from their paths (registry + workspace db) */
+async function collectUserFiles(
+  userId: number,
+  registryUser: { profile_photo_path: string | null; signature_path: string | null },
+  userDb: Database,
+  readFile: (path: string, opts: { baseDir: number }) => Promise<Uint8Array>,
+  BaseDirectory: { AppData: number },
+): Promise<BackupData['files']> {
+  const signatures: { [key: string]: string } = {};
+  const photos: { [key: string]: string } = {};
+  const logos: { [key: string]: string } = {};
+  const receiptPhotos: { [key: string]: string } = {};
+
+  // Profile photo and signature from registry
+  if (registryUser.profile_photo_path) {
+    const base64 = await readFileAsBase64(readFile, registryUser.profile_photo_path, BaseDirectory);
+    if (base64) {
+      const name = registryUser.profile_photo_path.split('/').pop() || 'profile.png';
+      photos[name] = base64;
+    }
+  }
+  if (registryUser.signature_path) {
+    const base64 = await readFileAsBase64(readFile, registryUser.signature_path, BaseDirectory);
+    if (base64) {
+      const name = registryUser.signature_path.split('/').pop() || 'signature.png';
+      signatures[name] = base64;
+    }
+  }
+
+  // Company logo from user's workspace
+  const companyRows = await userDb.select<{ company_logo_path: string | null }[]>(
+    'SELECT company_logo_path FROM company_settings LIMIT 1',
+  );
+  if (companyRows[0]?.company_logo_path) {
+    const base64 = await readFileAsBase64(readFile, companyRows[0].company_logo_path, BaseDirectory);
+    if (base64) {
+      const name = companyRows[0].company_logo_path.split('/').pop() || 'logo.png';
+      logos[name] = base64;
+    }
+  }
+
+  // Receipt photos from user's app_settings
+  const receiptPaths = await userDb.select<{ setting_key: string; setting_value: string }[]>(
+    "SELECT setting_key, setting_value FROM app_settings WHERE setting_key LIKE 'receipt_photo_path_%'",
+  );
+  for (const row of receiptPaths) {
+    if (row.setting_value) {
+      const base64 = await readFileAsBase64(readFile, row.setting_value, BaseDirectory);
+      if (base64) {
+        const name = row.setting_value.split('/').pop() || `receipt_${row.setting_key}.png`;
+        receiptPhotos[name] = base64;
+      }
+    }
+  }
+
+  return { signatures, photos, logos, receiptPhotos };
+}
+
 /**
- * Create a backup of all data (database + files)
+ * Backup my data: backup only the current user's database and their files.
  */
-export async function createBackup(): Promise<string> {
+export async function createBackupMyData(): Promise<string> {
   if (!isTauri()) {
     throw new Error('Backup is only available in Tauri environment');
   }
 
-  const { readFile, readDir, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+  const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
   const { save } = await import('@tauri-apps/plugin-dialog');
 
+  const dbPath = getCurrentUserDatabasePath();
+  if (!dbPath) {
+    throw new Error('No user logged in. Please log in to create a backup.');
+  }
+
+  const userId = typeof window !== 'undefined' ? parseInt(localStorage.getItem('current_user_id') || '0', 10) : 0;
+  if (!userId) {
+    throw new Error('No user logged in. Please log in to create a backup.');
+  }
+
   try {
-    // Read database file
     let dbData: Uint8Array;
     try {
-      dbData = await readFile(DB_NAME, { baseDir: BaseDirectory.AppData });
+      dbData = await readFile(dbPath, { baseDir: BaseDirectory.AppData });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes('not found') || errorMessage.includes('No such file')) {
@@ -41,111 +133,46 @@ export async function createBackup(): Promise<string> {
       throw error;
     }
 
-    // Convert database to base64
-    const dbBase64 = btoa(
-      String.fromCharCode(...dbData)
+    const dbBase64 = btoa(String.fromCharCode(...dbData));
+
+    const registry = await getDefaultDatabase();
+    const users = await registry.select<
+      { email: string; profile_photo_path: string | null; signature_path: string | null }[]
+    >('SELECT email, profile_photo_path, signature_path FROM users WHERE id = $1', [userId]);
+    const registryUser = users[0] ?? {
+      email: 'unknown',
+      profile_photo_path: null,
+      signature_path: null,
+    };
+
+    const userDb = await getDatabase();
+    const files = await collectUserFiles(
+      userId,
+      { profile_photo_path: registryUser.profile_photo_path, signature_path: registryUser.signature_path },
+      userDb,
+      readFile,
+      BaseDirectory,
     );
 
-    // Read all files from signatures directory
-    const signatures: { [key: string]: string } = {};
-    try {
-      const sigDir = 'signatures';
-      const sigFiles = await readDir(sigDir, { baseDir: BaseDirectory.AppData });
-      for (const file of sigFiles) {
-        if (file.isFile) {
-          const fileData = await readFile(`${sigDir}/${file.name}`, { baseDir: BaseDirectory.AppData });
-          const base64 = btoa(String.fromCharCode(...fileData));
-          signatures[file.name] = base64;
-        }
-      }
-    } catch (error) {
-      // Directory might not exist, that's okay
-      console.log('No signatures directory found');
-    }
-
-    // Read all files from users/photos directory
-    const photos: { [key: string]: string } = {};
-    try {
-      const photosDir = 'users/photos';
-      const photoFiles = await readDir(photosDir, { baseDir: BaseDirectory.AppData });
-      for (const file of photoFiles) {
-        if (file.isFile) {
-          const fileData = await readFile(`${photosDir}/${file.name}`, { baseDir: BaseDirectory.AppData });
-          const base64 = btoa(String.fromCharCode(...fileData));
-          photos[file.name] = base64;
-        }
-      }
-    } catch (error) {
-      console.log('No photos directory found');
-    }
-
-    // Read company logos
-    const logos: { [key: string]: string } = {};
-    try {
-      const logosDir = 'company/logos';
-      const logoFiles = await readDir(logosDir, { baseDir: BaseDirectory.AppData });
-      for (const file of logoFiles) {
-        if (file.isFile) {
-          const fileData = await readFile(`${logosDir}/${file.name}`, { baseDir: BaseDirectory.AppData });
-          const base64 = btoa(String.fromCharCode(...fileData));
-          logos[file.name] = base64;
-        }
-      }
-    } catch (error) {
-      console.log('No logos directory found');
-    }
-
-    // Read receipt photos
-    const receiptPhotos: { [key: string]: string } = {};
-    try {
-      const receiptPhotosDir = 'receipts/photos';
-      const receiptPhotoFiles = await readDir(receiptPhotosDir, { baseDir: BaseDirectory.AppData });
-      for (const file of receiptPhotoFiles) {
-        if (file.isFile) {
-          const fileData = await readFile(`${receiptPhotosDir}/${file.name}`, { baseDir: BaseDirectory.AppData });
-          const base64 = btoa(String.fromCharCode(...fileData));
-          receiptPhotos[file.name] = base64;
-        }
-      }
-    } catch (error) {
-      console.log('No receipt photos directory found');
-    }
-
-    // Create backup object
     const backup: BackupData = {
       version: '1.0',
       timestamp: new Date().toISOString(),
       database: dbBase64,
-      files: {
-        signatures,
-        photos,
-        logos,
-        receiptPhotos,
-      },
+      files,
     };
 
-    // Convert to JSON
     const backupJson = JSON.stringify(backup, null, 2);
-
-    // Save to file
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const defaultPath = `mnb-backup-${timestamp}.json`;
+    const defaultPath = `${sanitizeEmailForFilename(registryUser.email)}.json`;
 
     const filePath = await save({
       defaultPath,
-      filters: [
-        {
-          name: 'Backup Files',
-          extensions: ['json'],
-        },
-      ],
+      filters: [{ name: 'Backup Files', extensions: ['json'] }],
     });
 
     if (!filePath) {
       throw new Error('Backup cancelled');
     }
 
-    // Write backup file
     const { writeTextFile } = await import('@tauri-apps/plugin-fs');
     await writeTextFile(filePath, backupJson);
 
@@ -154,6 +181,100 @@ export async function createBackup(): Promise<string> {
     console.error('Error creating backup:', error);
     throw error;
   }
+}
+
+/**
+ * Backup all: backup all users' databases into a zip folder.
+ * Each file is named by the account email address (e.g. user_at_example_com.json).
+ */
+export async function createBackupAll(): Promise<string> {
+  if (!isTauri()) {
+    throw new Error('Backup is only available in Tauri environment');
+  }
+
+  const { readFile, exists, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+  const { save } = await import('@tauri-apps/plugin-dialog');
+  const JSZip = (await import('jszip')).default;
+
+  try {
+    const registry = await getDefaultDatabase();
+    const users = await registry.select<
+      { id: number; email: string; profile_photo_path: string | null; signature_path: string | null }[]
+    >('SELECT id, email, profile_photo_path, signature_path FROM users WHERE is_active = 1');
+
+    if (users.length === 0) {
+      throw new Error('No users found to backup.');
+    }
+
+    const zip = new JSZip();
+
+    for (const user of users) {
+      const dbPath = getUserDatabasePath(user.id);
+      const dbExists = await exists(dbPath, { baseDir: BaseDirectory.AppData });
+      if (!dbExists) {
+        console.log(`Skipping user ${user.email}: database not found`);
+        continue;
+      }
+
+      const dbData = await readFile(dbPath, { baseDir: BaseDirectory.AppData });
+      const dbBase64 = btoa(String.fromCharCode(...dbData));
+
+      let userDb: Database;
+      try {
+        userDb = await Database.load(`sqlite:${dbPath}`);
+      } catch {
+        console.log(`Skipping user ${user.email}: could not open database`);
+        continue;
+      }
+
+      const files = await collectUserFiles(
+        user.id,
+        { profile_photo_path: user.profile_photo_path, signature_path: user.signature_path },
+        userDb,
+        readFile,
+        BaseDirectory,
+      );
+
+      const backup: BackupData = {
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        database: dbBase64,
+        files,
+      };
+
+      const filename = `${sanitizeEmailForFilename(user.email)}.json`;
+      zip.file(filename, JSON.stringify(backup, null, 2));
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'uint8array' });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const defaultPath = `mnb-backup-all-${timestamp}.zip`;
+
+    const filePath = await save({
+      defaultPath,
+      filters: [{ name: 'Zip Archives', extensions: ['zip'] }],
+    });
+
+    if (!filePath) {
+      throw new Error('Backup cancelled');
+    }
+
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    await writeFile(filePath, zipBlob);
+
+    return filePath;
+  } catch (error) {
+    console.error('Error creating backup:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create a backup. Use createBackupMyData() or createBackupAll() for specific types.
+ * This is kept for backwards compatibility - defaults to "my data".
+ */
+export async function createBackup(): Promise<string> {
+  return createBackupMyData();
 }
 
 /**
@@ -192,6 +313,11 @@ export async function restoreBackup(): Promise<void> {
       throw new Error('Invalid backup file format');
     }
 
+    const dbPath = getCurrentUserDatabasePath();
+    if (!dbPath) {
+      throw new Error('No user logged in. Please log in to restore a backup.');
+    }
+
     // Delete existing database (this will reset the connection reference)
     const { deleteDatabase } = await import('./db');
     try {
@@ -203,7 +329,7 @@ export async function restoreBackup(): Promise<void> {
 
     // Restore database
     const dbData = Uint8Array.from(atob(backup.database), c => c.charCodeAt(0));
-    await writeFile(DB_NAME, dbData, { baseDir: BaseDirectory.AppData });
+    await writeFile(dbPath, dbData, { baseDir: BaseDirectory.AppData });
 
     // Restore signatures
     if (backup.files.signatures && Object.keys(backup.files.signatures).length > 0) {
@@ -257,22 +383,32 @@ export async function restoreBackup(): Promise<void> {
  * Delete current user account and all their data
  */
 export async function deleteAccount(userId: number): Promise<void> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
 
   try {
     await db.execute('BEGIN TRANSACTION');
 
-    // Delete user's receipts (if any are associated with this user)
-    // Note: Receipts are associated with LBA units, not directly with users
-    // But we can delete user-specific data like profile photos and signatures
-
     // Delete user's password reset tokens
     await db.execute('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
+
+    // Remove user database mapping
+    await db.execute('DELETE FROM user_databases WHERE user_id = $1', [userId]);
 
     // Delete user account
     await db.execute('DELETE FROM users WHERE id = $1', [userId]);
 
     await db.execute('COMMIT');
+
+    // Delete user's workspace database file
+    if (isTauri()) {
+      const { remove, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+      const userDbPath = getUserDatabasePath(userId);
+      try {
+        await remove(userDbPath, { baseDir: BaseDirectory.AppData });
+      } catch (e) {
+        console.log('User database file not found or already deleted');
+      }
+    }
 
     // Delete user's files
     if (isTauri()) {
@@ -305,7 +441,9 @@ export async function deleteAccount(userId: number): Promise<void> {
       }
     }
 
-    // Logout user
+    // Clear user DB connection and logout
+    const { clearUserDatabase } = await import('./db');
+    clearUserDatabase();
     logout();
   } catch (error) {
     await db.execute('ROLLBACK');

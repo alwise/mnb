@@ -25,7 +25,8 @@ import ImageSourceDialog from '@/components/ui/ImageSourceDialog';
 import ImageCrop from '@/components/ui/ImageCrop';
 import { User, PenTool, Save, Edit2, Check, X, Mail, Camera, Upload, MapPin, Phone, Globe, Building2, Layout, FileText } from 'lucide-react';
 import {
-  createBackup,
+  createBackupMyData,
+  createBackupAll,
   restoreBackup,
   deleteAccount,
   resetAllData,
@@ -46,7 +47,7 @@ export default function ProfilePage() {
   const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'user' | 'business' | 'data'>('user');
-  const [backingUp, setBackingUp] = useState(false);
+  const [backingUpType, setBackingUpType] = useState<'my-data' | 'all' | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -211,7 +212,9 @@ export default function ProfilePage() {
       await uploadCompanyLogo(file);
       const logo = await getCompanyLogoDataUrl();
       if (logo) setLogoPreview(logo);
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.settings.companyLogo });
+      if (user?.id) {
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.settings.companyLogo(user.id) });
+      }
       await showAlert(t('profile.updateSuccess'));
     } catch (error) {
       console.error('Error uploading logo:', error);
@@ -726,32 +729,60 @@ export default function ProfilePage() {
                 <p className="text-sm text-gray-600 mb-4">
                   {t('profile.backupDesc')}
                 </p>
-                <Button
-                  onClick={async () => {
-                    try {
-                      setBackingUp(true);
-                      const filePath = await createBackup();
-                      await showAlert(
-                        `Backup created successfully!\n\nSaved to: ${filePath}\n\nYou can use this file to restore your data later.`,
-                        'Backup Successful'
-                      );
-                    } catch (error) {
-                      console.error('Error creating backup:', error);
-                      const errorMessage = error instanceof Error ? error.message : String(error);
-                      await showAlert(
-                        `Error creating backup: ${errorMessage}\n\nMake sure you are running the app in Tauri environment and have some data to backup.`,
-                        'Backup Failed'
-                      );
-                    } finally {
-                      setBackingUp(false);
-                    }
-                  }}
-                  variant="primary"
-                  isLoading={backingUp}
-                  disabled={backingUp}
-                >
-                  {backingUp ? t('profile.creatingBackup') : t('profile.backupTitle')}
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    onClick={async () => {
+                      try {
+                        setBackingUpType('my-data');
+                        const filePath = await createBackupMyData();
+                        await showAlert(
+                          `Backup created successfully!\n\nSaved to: ${filePath}\n\nYou can use this file to restore your data later.`,
+                          'Backup Successful'
+                        );
+                      } catch (error) {
+                        console.error('Error creating backup:', error);
+                        const errorMessage = error instanceof Error ? error.message : String(error);
+                        await showAlert(
+                          `Error creating backup: ${errorMessage}\n\nMake sure you are running the app in Tauri environment and have some data to backup.`,
+                          'Backup Failed'
+                        );
+                      } finally {
+                        setBackingUpType(null);
+                      }
+                    }}
+                    variant="primary"
+                    isLoading={backingUpType === 'my-data'}
+                    disabled={!!backingUpType}
+                  >
+                    {backingUpType === 'my-data' ? t('profile.creatingBackup') : t('profile.backupMyData')}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        setBackingUpType('all');
+                        const filePath = await createBackupAll();
+                        await showAlert(
+                          `Backup created successfully!\n\nSaved to: ${filePath}\n\nThis ZIP contains backups for all user accounts, each file named by email address.`,
+                          'Backup Successful'
+                        );
+                      } catch (error) {
+                        console.error('Error creating backup:', error);
+                        const errorMessage = error instanceof Error ? error.message : String(error);
+                        await showAlert(
+                          `Error creating backup: ${errorMessage}\n\nMake sure you are running the app in Tauri environment.`,
+                          'Backup Failed'
+                        );
+                      } finally {
+                        setBackingUpType(null);
+                      }
+                    }}
+                    variant="secondary"
+                    isLoading={backingUpType === 'all'}
+                    disabled={!!backingUpType}
+                  >
+                    {backingUpType === 'all' ? t('profile.creatingBackup') : t('profile.backupAll')}
+                  </Button>
+                </div>
               </div>
 
               {/* Restore Section */}

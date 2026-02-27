@@ -1,4 +1,8 @@
-import { getDatabase } from "./db";
+import {
+  getDefaultDatabase,
+  createUserDatabase,
+  clearUserDatabase,
+} from "./db";
 import { isTauri } from "./utils";
 
 export interface User {
@@ -35,7 +39,7 @@ export async function signup(
   fullName: string,
   signatureFile: File,
 ): Promise<number> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
 
   // Check if user already exists
   const existing = await db.select<{ id: number }[]>(
@@ -71,7 +75,7 @@ export async function signup(
   const fileData = new Uint8Array(arrayBuffer);
   await writeFile(destPath, fileData, { baseDir: BaseDirectory.AppData });
 
-  // Create user
+  // Create user in registry
   const result = await db.select<{ id: number }[]>(
     `INSERT INTO users (email, password_hash, full_name, signature_path, created_at, updated_at)
      VALUES ($1, $2, $3, $4, datetime('now'), datetime('now'))
@@ -79,7 +83,12 @@ export async function signup(
     [email, passwordHash, fullName, destPath],
   );
 
-  return result[0].id;
+  const userId = result[0].id;
+
+  // Create dedicated workspace database for this user
+  await createUserDatabase(userId);
+
+  return userId;
 }
 
 /**
@@ -89,7 +98,7 @@ export async function login(
   email: string,
   password: string,
 ): Promise<User | null> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
   const passwordHash = hashPassword(password);
 
   const users = await db.select<User[]>(
@@ -125,7 +134,7 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 
   try {
-    const db = await getDatabase();
+    const db = await getDefaultDatabase();
     const users = await db.select<User[]>(
       `SELECT id, email, full_name, profile_photo_path, signature_path, is_active, created_at, updated_at
        FROM users
@@ -157,6 +166,7 @@ export async function getCurrentUser(): Promise<User | null> {
  */
 export function logout(): void {
   if (typeof window !== "undefined") {
+    clearUserDatabase();
     localStorage.removeItem("current_user_id");
   }
 }
@@ -181,7 +191,7 @@ export async function updateUserProfile(
     signature_path?: string | null;
   },
 ): Promise<void> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
   const fields: string[] = [];
   const values: any[] = [];
   let paramIndex = 1;
@@ -279,7 +289,7 @@ export async function uploadUserSignature(
 export async function getUserProfilePhotoDataUrl(
   userId: number,
 ): Promise<string | null> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
   const users = await db.select<{ profile_photo_path: string | null }[]>(
     "SELECT profile_photo_path FROM users WHERE id = $1",
     [userId],
@@ -327,7 +337,7 @@ export async function getUserProfilePhotoDataUrl(
 export async function getUserSignatureDataUrl(
   userId: number,
 ): Promise<string | null> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
   const users = await db.select<{ signature_path: string | null }[]>(
     "SELECT signature_path FROM users WHERE id = $1",
     [userId],
@@ -373,7 +383,7 @@ export async function getUserSignatureDataUrl(
  * Get all user emails (for auto-fill purposes)
  */
 export async function getAllUserEmails(): Promise<string[]> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
   const users = await db.select<{ email: string }[]>(
     "SELECT email FROM users WHERE is_active = 1 ORDER BY created_at DESC",
   );
@@ -386,7 +396,7 @@ export async function getAllUserEmails(): Promise<string[]> {
 export async function generatePasswordResetToken(
   email: string,
 ): Promise<string> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
 
   // Find user by email
   const users = await db.select<{ id: number }[]>(
@@ -429,7 +439,7 @@ export async function generatePasswordResetToken(
 export async function validatePasswordResetToken(
   token: string,
 ): Promise<number | null> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
   const trimmed = (token || "").trim();
   if (!trimmed) return null;
 
@@ -465,7 +475,7 @@ export async function resetPassword(
   token: string,
   newPassword: string,
 ): Promise<void> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
   const trimmed = (token || "").trim();
   if (!trimmed) throw new Error("Invalid or expired reset token");
 
@@ -502,7 +512,7 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<void> {
-  const db = await getDatabase();
+  const db = await getDefaultDatabase();
 
   if (newPassword.length < 6) {
     throw new Error("Password must be at least 6 characters long");

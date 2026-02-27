@@ -216,8 +216,10 @@ export default function ReceiptDetailClient({ receiptId }: { receiptId: number }
     try {
       setDeleting(true);
       await deleteReceipt(receiptId);
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list() });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated() });
+      if (user?.id) {
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list(user.id) });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated(user.id) });
+      }
       await showAlert(t('receipts.deleteSuccess'));
       router.replace('/receipts');
     } catch (error) {

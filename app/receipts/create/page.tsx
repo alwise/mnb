@@ -422,10 +422,12 @@ export default function CreateStockCardPage() {
         }
       }
 
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list() });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated() });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.stats });
-      await queryClient.invalidateQueries({ queryKey: ['receipts', 'totals'] });
+      if (user?.id) {
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list(user.id) });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated(user.id) });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.stats(user.id) });
+        await queryClient.invalidateQueries({ queryKey: ['receipts', user.id, 'totals'] });
+      }
 
       await showAlert(t('receipts.createSuccess'));
       router.push('/receipts');

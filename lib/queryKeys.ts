@@ -1,25 +1,25 @@
 /**
  * Centralized React Query keys for the application.
- * Using a nested object structure to group related keys.
+ * All keys are scoped by userId to ensure user-specific cache isolation.
  */
 export const QUERY_KEYS = {
     receipts: {
-        all: ['receipts', 'all'] as const,
-        list: () => ['receipts'] as const,
-        detail: (id: number | string) => ['receipts', id] as const,
-        byUnit: (lbaUnitId: number | string) => ['receipts', 'unit', lbaUnitId] as const,
-        grouped: ['receipts', 'grouped'] as const,
-        totals: (lbaUnitId: number | string) => ['receipts', 'totals', lbaUnitId] as const,
-        stats: ['receipts', 'stats'] as const,
-        paginated: (filters?: any) => ['receipts', 'paginated', filters] as const,
+        all: (userId: number | string) => ['receipts', userId, 'all'] as const,
+        list: (userId: number | string) => ['receipts', userId] as const,
+        detail: (userId: number | string, id: number | string) => ['receipts', userId, id] as const,
+        byUnit: (userId: number | string, lbaUnitId: number | string) => ['receipts', userId, 'unit', lbaUnitId] as const,
+        grouped: (userId: number | string) => ['receipts', userId, 'grouped'] as const,
+        totals: (userId: number | string, lbaUnitId: number | string) => ['receipts', userId, 'totals', lbaUnitId] as const,
+        stats: (userId: number | string) => ['receipts', userId, 'stats'] as const,
+        paginated: (userId: number | string, filters?: any) => ['receipts', userId, 'paginated', filters] as const,
     },
     lbaUnits: {
-        all: ['lba-units', 'all'] as const,
-        list: () => ['lba-units'] as const,
-        detail: (id: number | string) => ['lba-units', id] as const,
-        paginated: () => ['lba-units', 'paginated'] as const,
+        all: (userId: number | string) => ['lba-units', userId, 'all'] as const,
+        list: (userId: number | string) => ['lba-units', userId] as const,
+        detail: (userId: number | string, id: number | string) => ['lba-units', userId, id] as const,
+        paginated: (userId: number | string) => ['lba-units', userId, 'paginated'] as const,
     },
     settings: {
-        companyLogo: ['settings', 'companyLogo'] as const,
+        companyLogo: (userId: number | string) => ['settings', userId, 'companyLogo'] as const,
     },
 } as const;

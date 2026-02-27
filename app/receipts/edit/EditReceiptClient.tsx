@@ -591,14 +591,15 @@ export default function EditReceiptClient({ receiptId }: { receiptId: number }) 
         }
       }
 
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list() });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated() });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.detail(receiptId) });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.stats });
-      await queryClient.invalidateQueries({ queryKey: ['receipts', 'totals'] });
-      // Also invalidate LBA units cache since we may have updated unit fields
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lbaUnits.list() });
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lbaUnits.all });
+      if (user?.id) {
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.list(user.id) });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.paginated(user.id) });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.detail(user.id, receiptId) });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.receipts.stats(user.id) });
+        await queryClient.invalidateQueries({ queryKey: ['receipts', user.id, 'totals'] });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lbaUnits.list(user.id) });
+        await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.lbaUnits.all(user.id) });
+      }
 
       await showAlert(t('receipts.updateSuccess'));
       router.push(`/receipts/view?id=${receiptId}`);

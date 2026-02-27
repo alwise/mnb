@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import {
-  createBackup,
+  createBackupMyData,
+  createBackupAll,
   restoreBackup,
   deleteAccount,
   resetAllData,
@@ -16,15 +17,15 @@ function DataManagementPageContent() {
   const router = useRouter();
   const { showAlert, showConfirm } = useDialog();
   const { user, logout } = useAuth();
-  const [backingUp, setBackingUp] = useState(false);
+  const [backingUpType, setBackingUpType] = useState<'my-data' | 'all' | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [resetting, setResetting] = useState(false);
 
-  async function handleBackup() {
+  async function handleBackupMyData() {
     try {
-      setBackingUp(true);
-      const filePath = await createBackup();
+      setBackingUpType('my-data');
+      const filePath = await createBackupMyData();
       await showAlert(
         `Backup created successfully!\n\nSaved to: ${filePath}\n\nYou can use this file to restore your data later.`,
         'Backup Successful'
@@ -37,7 +38,27 @@ function DataManagementPageContent() {
         'Backup Failed'
       );
     } finally {
-      setBackingUp(false);
+      setBackingUpType(null);
+    }
+  }
+
+  async function handleBackupAll() {
+    try {
+      setBackingUpType('all');
+      const filePath = await createBackupAll();
+      await showAlert(
+        `Backup created successfully!\n\nSaved to: ${filePath}\n\nThis ZIP contains backups for all user accounts, each file named by email address.`,
+        'Backup Successful'
+      );
+    } catch (error) {
+      console.error('Error creating backup:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await showAlert(
+        `Error creating backup: ${errorMessage}\n\nMake sure you are running the app in Tauri environment.`,
+        'Backup Failed'
+      );
+    } finally {
+      setBackingUpType(null);
     }
   }
 
@@ -206,17 +227,27 @@ function DataManagementPageContent() {
         <div className="bg-white shadow rounded-lg p-6 mb-6 border-l-4 border-blue-500">
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Backup Data</h2>
           <p className="text-sm text-gray-600 mb-4">
-            Create a backup of all your data including the database, signatures, photos, and logos.
-            You can use this backup to restore your data later.
+            Create a backup of your data. &quot;Backup My Data&quot; saves only your account&apos;s database and files.
+            &quot;Backup All&quot; creates a ZIP with backups for every user account, each file named by email.
           </p>
-          <Button
-            onClick={handleBackup}
-            variant="primary"
-            isLoading={backingUp}
-            disabled={backingUp}
-          >
-            {backingUp ? 'Creating Backup...' : 'Create Backup'}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={handleBackupMyData}
+              variant="primary"
+              isLoading={backingUpType === 'my-data'}
+              disabled={!!backingUpType}
+            >
+              {backingUpType === 'my-data' ? 'Creating Backup...' : 'Backup My Data'}
+            </Button>
+            <Button
+              onClick={handleBackupAll}
+              variant="secondary"
+              isLoading={backingUpType === 'all'}
+              disabled={!!backingUpType}
+            >
+              {backingUpType === 'all' ? 'Creating Backup...' : 'Backup All'}
+            </Button>
+          </div>
         </div>
 
         {/* Restore Section */}

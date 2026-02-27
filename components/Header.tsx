@@ -25,8 +25,9 @@ export default function Header() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: logoUrl } = useQuery<string | null>({
-    queryKey: QUERY_KEYS.settings.companyLogo,
+    queryKey: user?.id ? QUERY_KEYS.settings.companyLogo(user.id) : ['settings', 'companyLogo'],
     queryFn: getCompanyLogoDataUrl,
+    enabled: !!user?.id,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
