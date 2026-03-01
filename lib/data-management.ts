@@ -28,6 +28,20 @@ function sanitizeEmailForFilename(email: string): string {
   return email.replace(/@/g, '_at_').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+/**
+ * Convert Uint8Array to base64 in chunks to avoid "Maximum call stack size exceeded"
+ * when processing large files (e.g. databases, images) on Windows and other platforms.
+ */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const chunkSize = 8192;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 /** Read a file by path and return base64, or null if not found */
 async function readFileAsBase64(
   readFile: (path: string, opts: { baseDir: number }) => Promise<Uint8Array>,
@@ -36,7 +50,7 @@ async function readFileAsBase64(
 ): Promise<string | null> {
   try {
     const fileData = await readFile(path, { baseDir: BaseDirectory.AppData });
-    return btoa(String.fromCharCode(...fileData));
+    return uint8ArrayToBase64(fileData);
   } catch {
     return null;
   }
@@ -133,7 +147,7 @@ export async function createBackupMyData(): Promise<string> {
       throw error;
     }
 
-    const dbBase64 = btoa(String.fromCharCode(...dbData));
+    const dbBase64 = uint8ArrayToBase64(dbData);
 
     const registry = await getDefaultDatabase();
     const users = await registry.select<
@@ -217,7 +231,7 @@ export async function createBackupAll(): Promise<string> {
       }
 
       const dbData = await readFile(dbPath, { baseDir: BaseDirectory.AppData });
-      const dbBase64 = btoa(String.fromCharCode(...dbData));
+      const dbBase64 = uint8ArrayToBase64(dbData);
 
       let userDb: Database;
       try {
